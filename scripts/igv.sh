@@ -11,4 +11,6 @@ exec java -Xmx4000m \
     --illegal-access=permit --add-modules=java.xml.bind \
 	-Dapple.laf.useScreenMenuBar=true \
 	-Djava.net.preferIPv4Stack=true \
+	-Dawt.useSystemAAFontSettings=on \
+    -Dswing.aatext=true \
 	-jar "$prefix"/igv.jar "$@"

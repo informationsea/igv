@@ -311,7 +311,8 @@ public class Main {
 
         if (Globals.IS_LINUX) {
             try {
-                UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
+                //UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
+                UIManager.setLookAndFeel("javax.swing.plaf.nimbus.NimbusLookAndFeel");
                 UIManager.put("JideSplitPane.dividerSize", 5);
                 UIManager.put("JideSplitPaneDivider.background", Color.darkGray);
 
