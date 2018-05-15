@@ -353,7 +353,7 @@ public class GenomeListManager {
     public Map<String, GenomeListItem> getServerGenomeMap() {
 
         if (serverGenomeListUnreachable) {
-            return null;
+            return Collections.emptyMap();
         }
 
         if (serverGenomeMap == null) {
