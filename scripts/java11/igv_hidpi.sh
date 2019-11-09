@@ -21,4 +21,6 @@ exec java -showversion --module-path="${prefix}"/lib -Xmx4g \
     -Dsun.java2d.uiScale=2 \
     -Dapple.laf.useScreenMenuBar=true \
     -Djava.net.preferIPv4Stack=true \
+	-Dawt.useSystemAAFontSettings=on \
+    -Dswing.aatext=true \
     --module=org.igv/org.broad.igv.ui.Main "$@"
