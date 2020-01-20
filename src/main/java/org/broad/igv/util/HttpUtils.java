@@ -35,15 +35,12 @@ import org.broad.igv.Globals;
 import org.broad.igv.exceptions.HttpResponseException;
 import org.broad.igv.google.GoogleUtils;
 import org.broad.igv.google.OAuthUtils;
-import org.broad.igv.gs.GSUtils;
 import org.broad.igv.prefs.IGVPreferences;
 import org.broad.igv.prefs.PreferencesManager;
 import org.broad.igv.ui.IGV;
 import org.broad.igv.ui.util.MessageUtils;
 import org.broad.igv.util.collections.CI;
 import org.broad.igv.util.ftp.FTPUtils;
-import org.broad.igv.util.stream.IGVUrlHelper;
-import org.broad.igv.util.stream.IGVUrlHelperFactory;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
@@ -57,9 +54,8 @@ import java.io.*;
 import java.net.*;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
-import java.util.*;
 import java.util.List;
-import java.util.regex.Pattern;
+import java.util.*;
 import java.util.zip.GZIPInputStream;
 
 import static org.broad.igv.prefs.Constants.*;
@@ -101,10 +97,7 @@ public class HttpUtils {
 
     private HttpUtils() {
 
-        // if (!Globals.checkJavaVersion("1.8")) {
         disableCertificateValidation();
-        // }
-        CookieHandler.setDefault(new IGVCookieManager());
         Authenticator.setDefault(new IGVAuthenticator());
 
         try {
@@ -149,17 +142,18 @@ public class HttpUtils {
             }
         }
 
-        String host = URLUtils.getHost(urlString);  
+        String host = URLUtils.getHost(urlString);
         if (host.equals("igv.broadinstitute.org")) {
             urlString = urlString.replace("igv.broadinstitute.org", "s3.amazonaws.com/igv.broadinstitute.org");
         } else if (host.equals("igvdata.broadinstitute.org")) {
-            // Cloudfront server
-            urlString = urlString.replace("igvdata.broadinstitute.org", "dn7ywbm9isq8j.cloudfront.net");
+            urlString = urlString.replace("igvdata.broadinstitute.org", "s3.amazonaws.com/igv.broadinstitute.org");
+        } else if (host.equals("dn7ywbm9isq8j.cloudfront.net")) {
+            urlString = urlString.replace("dn7ywbm9isq8j.cloudfront.net", "s3.amazonaws.com/igv.broadinstitute.org");
         } else if (host.equals("www.broadinstitute.org")) {
             urlString = urlString.replace("www.broadinstitute.org/igvdata", "data.broadinstitute.org/igvdata");
-        } else if(host.equals("www.dropbox.com")) {
+        } else if (host.equals("www.dropbox.com")) {
             urlString = urlString.replace("//www.dropbox.com", "//dl.dropboxusercontent.com");
-        } else if(host.equals("drive.google.com")) {
+        } else if (host.equals("drive.google.com")) {
             urlString = GoogleUtils.driveDownloadURL(urlString);
         }
 
@@ -256,7 +250,7 @@ public class HttpUtils {
         }
         byte[] postDataBytes = postData.toString().getBytes();
 
-        log.debug("Raw POST request: "+postData.toString());
+        log.debug("Raw POST request: " + postData.toString());
 
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("POST");
@@ -347,7 +341,7 @@ public class HttpUtils {
                     }
                 return false;
             } finally {
-                if(conn != null) {
+                if (conn != null) {
                     try {
                         conn.disconnect();
                     } catch (Exception e) {
@@ -383,7 +377,7 @@ public class HttpUtils {
                     throw e;
                 }
                 log.debug("HEAD request failed for url: " + url.toExternalForm());
-                log.debug("Trying GET instead for url: "+ url.toExternalForm());
+                log.debug("Trying GET instead for url: " + url.toExternalForm());
                 headURLCache.put(url, false);
             }
         }
@@ -775,17 +769,16 @@ public class HttpUtils {
                 log.info("PROXY NOT USED ");
                 if (proxySettings.getWhitelist().contains(url.getHost())) {
                     log.info(url.getHost() + " is whitelisted");
-                };
+                }
+                ;
             }
             conn = (HttpURLConnection) url.openConnection();
         }
 
-        if (GSUtils.isGenomeSpace(url)) {
-            conn.setRequestProperty("Accept", "application/json,text/plain");
-        } else {
-            if (!"HEAD".equals(method))
+            if (!"HEAD".equals(method)) {
                 conn.setRequestProperty("Accept", "text/plain");
-        }
+            }
+
 
         conn.setConnectTimeout(Globals.CONNECT_TIMEOUT);
         conn.setReadTimeout(Globals.READ_TIMEOUT);
@@ -801,10 +794,10 @@ public class HttpUtils {
         // If this is a Google URL and we have an access token use it.
         if (GoogleUtils.isGoogleURL(url.toExternalForm())) {
             String token = OAuthUtils.getInstance().getProvider().getAccessToken();
-            if (token != null)  {
+            if (token != null) {
                 conn.setRequestProperty("Authorization", "Bearer " + token);
             }
-            if(GoogleUtils.getProjectID() != null && GoogleUtils.getProjectID().length() > 0) {
+            if (GoogleUtils.getProjectID() != null && GoogleUtils.getProjectID().length() > 0) {
                 url = addQueryParameter(url, "userProject", GoogleUtils.getProjectID());
             }
         }
@@ -857,7 +850,7 @@ public class HttpUtils {
                     message = "File not found: " + url.toString();
                     throw new FileNotFoundException(message);
                 } else if (code == 401) {
-                    if(GoogleUtils.isGoogleURL(url.toExternalForm()) && retries == 0) {
+                    if (GoogleUtils.isGoogleURL(url.toExternalForm()) && retries == 0) {
                         GoogleUtils.checkLogin();
                         return openConnection(url, requestProperties, method, redirectCount, ++retries);
                     }
@@ -884,7 +877,7 @@ public class HttpUtils {
     }
 
     private boolean isDropboxHost(String host) {
-        return(host.equals("dl.dropboxusercontent.com") || host.equals("www.dropbox.com"));
+        return (host.equals("dl.dropboxusercontent.com") || host.equals("www.dropbox.com"));
     }
 
     private URL addQueryParameter(URL url, String userProject, String projectID) {
@@ -1059,13 +1052,7 @@ public class HttpUtils {
 
             Frame owner = IGV.hasInstance() ? IGV.getMainFrame() : null;
 
-            boolean isGenomeSpace = GSUtils.isGenomeSpace(getRequestingURL());
-            if (isGenomeSpace) {
-                // If we are being challenged by GS the token must be bad/expired
-                GSUtils.logout();
-            }
-
-            LoginDialog dlg = new LoginDialog(owner, isGenomeSpace, urlString, isProxyChallenge);
+            LoginDialog dlg = new LoginDialog(owner, urlString, isProxyChallenge);
             dlg.setVisible(true);
             if (dlg.isCanceled()) {
                 return null;
@@ -1129,86 +1116,6 @@ public class HttpUtils {
             n += count;
         }
     }
-
-
-    /**
-     * Extension of CookieManager that grabs cookies from the GenomeSpace identity server to store locally.
-     * This is to support the GenomeSpace "single sign-on". Examples ...
-     * gs-username=igvtest; Domain=.genomespace.org; Expires=Mon, 21-Jul-2031 03:27:23 GMT; Path=/
-     * gs-token=HnR9rBShNO4dTXk8cKXVJT98Oe0jWVY+; Domain=.genomespace.org; Expires=Mon, 21-Jul-2031 03:27:23 GMT; Path=/
-     */
-
-    static class IGVCookieManager extends CookieHandler {
-
-
-        CookieManager wrappedManager;
-
-        public IGVCookieManager() {
-            wrappedManager = new CookieManager();
-        }
-
-        @Override
-        public Map<String, List<String>> get(URI uri, Map<String, List<String>> requestHeaders) throws IOException {
-
-            Map<String, List<String>> headers = new HashMap<String, List<String>>();
-            headers.putAll(wrappedManager.get(uri, requestHeaders));
-
-            if (GSUtils.isGenomeSpace(uri.toURL())) {
-                String token = GSUtils.getGSToken();
-                if (token != null) {
-                    List<String> cookieList = headers.get("Cookie");
-                    boolean needsTokenCookie = true;
-                    boolean needsToolCookie = true;
-                    if (cookieList == null) {
-                        cookieList = new ArrayList<String>(1);
-                        headers.put("Cookie", cookieList);
-                    }
-
-                    for (String cookie : cookieList) {
-                        if (cookie.startsWith("gs-token")) {
-                            needsTokenCookie = false;
-                        } else if (cookie.startsWith("gs-toolname")) {
-                            needsToolCookie = false;
-                        }
-                    }
-                    if (needsTokenCookie) {
-                        cookieList.add("gs-token=" + token);
-                    }
-                    if (needsToolCookie) {
-                        cookieList.add("gs-toolname=IGV");
-                    }
-                }
-            }
-
-            return Collections.unmodifiableMap(headers);
-        }
-
-        @Override
-        public void put(URI uri, Map<String, List<String>> responseHeaders) throws IOException {
-            String urilc = uri.toString().toLowerCase();
-            if (urilc.contains("identity") && urilc.contains("genomespace")) {
-                List<String> cookies = responseHeaders.get("Set-Cookie");
-                if (cookies != null) {
-                    for (String cstring : cookies) {
-                        List<HttpCookie> cookieList = HttpCookie.parse(cstring);
-                        for (HttpCookie cookie : cookieList) {
-                            String cookieName = cookie.getName();
-                            String value = cookie.getValue();
-                            if (cookieName.equals("gs-token")) {
-                                //log.debug("gs-token: " + value);
-                                GSUtils.setGSToken(value);
-                            } else if (cookieName.equals("gs-username")) {
-                                //log.debug("gs-username: " + value);
-                                GSUtils.setGSUser(value);
-                            }
-                        }
-                    }
-                }
-            }
-            wrappedManager.put(uri, responseHeaders);
-        }
-    }
-
 
     public class UnsatisfiableRangeException extends RuntimeException {
 

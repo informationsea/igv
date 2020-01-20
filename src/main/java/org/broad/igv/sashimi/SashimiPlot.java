@@ -37,6 +37,7 @@ import org.broad.igv.event.IGVEventBus;
 import org.broad.igv.event.IGVEventObserver;
 import org.broad.igv.event.ViewChange;
 import org.broad.igv.ui.panel.*;
+import org.broad.igv.ui.util.IGVMouseInputAdapter;
 import org.broad.igv.ui.util.UIUtilities;
 
 import javax.swing.*;
@@ -158,9 +159,9 @@ public class SashimiPlot extends JFrame implements IGVEventObserver {
         ZoomSliderPanel zoomSliderPanel = new ZoomSliderPanel(frame);
         zoomSliderPanel.setMinZoomLevel(frame.getZoom());
 
-        zoomSliderPanel.addMouseListener(new MouseAdapter() {
+        zoomSliderPanel.addMouseListener(new IGVMouseInputAdapter() {
             @Override
-            public void mouseClicked(MouseEvent e) {
+            public void igvMouseClicked(MouseEvent e) {
                 SashimiPlot.this.repaint();
             }
         });
@@ -332,6 +333,7 @@ public class SashimiPlot extends JFrame implements IGVEventObserver {
             });
 
             CoverageTrack covTrack = getRenderer(this.trackComponent.track).getCoverageTrack();
+            covTrack.setWindowFunction(WindowFunction.max);
             JMenuItem setCoverageDataRange = CoverageTrack.addDataRangeItem(SashimiPlot.this, null, Arrays.asList(covTrack));
             setCoverageDataRange.setText("Set Exon Coverage Max");
 
@@ -525,7 +527,7 @@ public class SashimiPlot extends JFrame implements IGVEventObserver {
         }
     }
 
-    private abstract class TrackComponentMouseAdapter<T extends Track> extends MouseAdapter {
+    private abstract class TrackComponentMouseAdapter<T extends Track> extends IGVMouseInputAdapter {
 
         protected TrackComponent<T> trackComponent;
         protected PanTool currentTool;
@@ -555,6 +557,7 @@ public class SashimiPlot extends JFrame implements IGVEventObserver {
 
         @Override
         public void mouseReleased(MouseEvent e) {
+            super.mouseReleased(e);
             if (e.isPopupTrigger()) {
                 doPopupMenu(e);
             } else {
@@ -564,6 +567,7 @@ public class SashimiPlot extends JFrame implements IGVEventObserver {
 
         @Override
         public void mousePressed(MouseEvent e) {
+            super.mousePressed(e);
             if (e.isPopupTrigger()) {
                 doPopupMenu(e);
             } else {
@@ -583,7 +587,7 @@ public class SashimiPlot extends JFrame implements IGVEventObserver {
         }
 
         @Override
-        public void mouseClicked(MouseEvent e) {
+        public void igvMouseClicked(MouseEvent e) {
             if (e.isPopupTrigger()) {
                 doPopupMenu(e);
                 return;

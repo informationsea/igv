@@ -48,6 +48,7 @@ import org.broad.igv.sam.AlignmentTrack;
 import org.broad.igv.sam.CoverageTrack;
 import org.broad.igv.sam.SAMWriter;
 import org.broad.igv.ui.*;
+import org.broad.igv.ui.action.OverlayTracksMenuAction;
 import org.broad.igv.ui.color.ColorUtilities;
 import org.broad.igv.ui.panel.FrameManager;
 import org.broad.igv.ui.panel.IGVPopupMenu;
@@ -337,18 +338,11 @@ public class TrackMenuUtils {
 
         if (tracks.size() > 1 || merged) {
             menu.addSeparator();
+
             final List<DataTrack> dataTrackList = Lists.newArrayList(Iterables.filter(tracks, DataTrack.class));
             final JMenuItem overlayGroups = new JMenuItem("Overlay Tracks");
-            overlayGroups.addActionListener(new ActionListener() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    MergedTracks mergedTracks = new MergedTracks(UUID.randomUUID().toString(), "Overlay", dataTrackList);
-                    Track firstTrack = tracks.iterator().next();
-                    TrackPanel panel = TrackPanel.getParentPanel(firstTrack);
-                    panel.addTrack(mergedTracks);
-                    panel.moveSelectedTracksTo(Arrays.asList(mergedTracks), firstTrack, false);
-                    panel.removeTracks(tracks);
-                }
+            overlayGroups.addActionListener(e -> {
+                OverlayTracksMenuAction.merge(dataTrackList, "Overlay");
             });
 
             int numDataTracks = dataTrackList.size();
@@ -361,13 +355,7 @@ public class TrackMenuUtils {
             menu.add(unmergeItem);
             if (merged) {
                 unmergeItem.addActionListener(e -> {
-                    Track firstTrack1 = tracks.iterator().next();
-                    TrackPanel panel = TrackPanel.getParentPanel(firstTrack1);
-                    final MergedTracks mergedTracks = (MergedTracks) firstTrack1;
-                    mergedTracks.setTrackAlphas(1.0);
-                    panel.addTracks(mergedTracks.getMemberTracks());
-                    panel.moveSelectedTracksTo(mergedTracks.getMemberTracks(), mergedTracks, true);
-                    IGV.getInstance().removeTracks(Arrays.asList(mergedTracks));
+                    OverlayTracksMenuAction.unmerge(tracks);
                 });
             } else {
                 unmergeItem.setEnabled(false);

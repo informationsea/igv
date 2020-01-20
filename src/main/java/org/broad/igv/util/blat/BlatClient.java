@@ -61,6 +61,7 @@ import java.util.Map;
  */
 public class BlatClient {
 
+    public static final int MINIMUM_BLAT_LENGTH = 20;
     static int sleepTime = 15 * 1000;  //	#	milli seconds to wait between requests
 
     static String hgsid;  // cached, not sure what this is for but apparently its best to reuse it.
@@ -221,6 +222,10 @@ public class BlatClient {
     }
 
     public static void doBlatQuery(final String chr, final int start, final int end, Strand strand) {
+        doBlatQuery(chr, start, end, strand, "Blat");
+    }
+
+    public static void doBlatQuery(final String chr, final int start, final int end, Strand strand, final String trackLabel) {
 
         if((end - start) > 8000) {
             MessageUtils.showMessage("BLAT searches are limited to 8kb.  Please try a shorter sequence.");
@@ -239,7 +244,10 @@ public class BlatClient {
     }
 
     public static void doBlatQuery(final String userSeq) {
+        doBlatQuery(userSeq, "Blat");
+    }
 
+    public static void doBlatQuery(final String userSeq, final String trackLabel) {
         LongRunningTask.submit(new NamedRunnable() {
             public String getName() {
                 return "Blat sequence";
@@ -257,7 +265,7 @@ public class BlatClient {
                         return;
                     }
 
-                    BlatTrack newTrack = new BlatTrack(species, userSeq, db, genome);
+                    BlatTrack newTrack = new BlatTrack(species, userSeq, db, genome, trackLabel);
 
 
                     if (newTrack.getFeatures().isEmpty()) {

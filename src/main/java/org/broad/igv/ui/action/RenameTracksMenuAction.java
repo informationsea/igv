@@ -23,49 +23,53 @@
  * THE SOFTWARE.
  */
 
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
 package org.broad.igv.ui.action;
 
-import org.apache.log4j.Logger;
-import org.broad.igv.feature.genome.GenomeManager;
-import org.broad.igv.gs.GSFileBrowser;
+import org.broad.igv.prefs.Constants;
+import org.broad.igv.session.Session;
+import org.broad.igv.track.Track;
+import org.broad.igv.ui.AttributeSelectionDialog;
 import org.broad.igv.ui.IGV;
-import org.broad.igv.ui.util.MessageUtils;
+import org.broad.igv.ui.util.UIUtilities;
 
 import java.awt.event.ActionEvent;
+import java.util.List;
 
 /**
  * @author jrobinso
- *         Date: 4/24/13
- *         Time: 4:26 PM
  */
-public class LoadGenomeFromGSMenuAction extends MenuAction {
+public class RenameTracksMenuAction extends MenuAction {
 
-    static Logger log = Logger.getLogger(LoadGenomeFromGSMenuAction.class);
-    IGV igv;
+    IGV mainFrame;
 
-    public LoadGenomeFromGSMenuAction(String label, int mnemonic, IGV igv) {
+    public RenameTracksMenuAction(String label, int mnemonic, IGV mainFrame) {
         super(label, null, mnemonic);
-        this.igv = igv;
-        setToolTipText("Load genome from GenomeSpace");
+        this.mainFrame = mainFrame;
     }
 
     @Override
     public void actionPerformed(ActionEvent e) {
 
+        UIUtilities.invokeOnEventThread(() -> {
 
-        try {
-            GSFileBrowser dlg = new GSFileBrowser(IGV.getMainFrame());
+            final AttributeSelectionDialog dlg = new AttributeSelectionDialog(mainFrame.getMainFrame(), "Rename");
             dlg.setVisible(true);
 
-            String url = dlg.getFileURL();
-            if (url != null) {
-                GenomeManager.getInstance().loadGenome(url, null);
+            if (!dlg.isCanceled()) {
+                Session currentSession = IGV.getInstance().getSession();
+                String selectedAttribute = dlg.getSelected();
+                if (selectedAttribute == null) {
+                    currentSession.removePreference(Constants.TRACK_ATTRIBUTE_NAME_KEY);
+                } else {
+                    currentSession.setPreference(Constants.TRACK_ATTRIBUTE_NAME_KEY, selectedAttribute);
+                }
+                mainFrame.doRefresh();
             }
-        } catch (Exception e1) {
-            log.error("Error fetching directory listing on GenomeSpace server.", e1);
-            MessageUtils.showMessage("Error fetching directory listing on GenomeSpace server: " + e1.getMessage());
-        }
-
+        });
     }
 
 }

@@ -101,7 +101,7 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
     static final int DS_MARGIN_2 = 5;
     private final Genome genome;
 
-    private ExperimentType experimentType;
+    ExperimentType experimentType;
 
     private final AlignmentRenderer renderer;
 
@@ -187,17 +187,6 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
     static final BisulfiteContext DEFAULT_BISULFITE_CONTEXT = BisulfiteContext.CG;
 
 
-    public static void sortAlignmentTracks(SortOption option, String tag) {
-
-        IGV.getInstance().sortAlignmentTracks(option, tag);
-        Collection<IGVPreferences> allPrefs = PreferencesManager.getAllPreferences();
-        for (IGVPreferences prefs : allPrefs) {
-            prefs.put(SAM_SORT_OPTION, option.toString());
-            prefs.put(SAM_SORT_BY_TAG, tag);
-        }
-        refresh();
-    }
-
     /**
      * Create a new alignment track
      *
@@ -209,6 +198,7 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
         super(locator);
 
         this.dataManager = dataManager;
+        this.dataManager.setAlignmentTrack(this);
         this.dataManager.subscribe(this);
         this.genome = genome;
 
@@ -222,13 +212,17 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
         renderer = new AlignmentRenderer(this);
 
         showGroupLine = getPreferences().getAsBoolean(SAM_SHOW_GROUP_SEPARATOR);
-        setDisplayMode(DisplayMode.EXPANDED);
+
+        try {
+            setDisplayMode(DisplayMode.valueOf(prefs.get(SAM_DISPLAY_MODE).toUpperCase()));
+        } catch (Exception e) {
+            setDisplayMode(DisplayMode.EXPANDED);
+        }
 
         if (prefs.getAsBoolean(SAM_SHOW_REF_SEQ)) {
             sequenceTrack = new SequenceTrack("Reference sequence");
             sequenceTrack.setHeight(14);
         }
-
         if (renderOptions.colorOption == ColorOption.BISULFITE) {
             setExperimentType(ExperimentType.BISULFITE);
         }
@@ -238,7 +232,6 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
         this.insertionIntervalsMap = Collections.synchronizedMap(new HashMap<>());
 
         IGVEventBus.getInstance().subscribe(FrameManager.ChangeEvent.class, this);
-        IGVEventBus.getInstance().subscribe(ExperimentTypeChangeEvent.class, this);
         IGVEventBus.getInstance().subscribe(AlignmentTrackEvent.class, this);
     }
 
@@ -256,17 +249,7 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
             }
             insertionIntervalsMap = newMap;
 
-        } else if (event instanceof ExperimentTypeChangeEvent) {
-
-            if (experimentType == null) {
-
-                log.info("Experiment type = " + ((ExperimentTypeChangeEvent) event).type);
-
-                setExperimentType(((ExperimentTypeChangeEvent) event).type);
-
-            }
-
-        } else if (event instanceof AlignmentTrackEvent) {
+        }  else if (event instanceof AlignmentTrackEvent) {
             AlignmentTrackEvent e = (AlignmentTrackEvent) event;
             AlignmentTrackEvent.Type eventType = e.getType();
             switch (eventType) {
@@ -284,10 +267,13 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
         }
     }
 
+    void setExperimentType(ExperimentType type) {
 
-    private void setExperimentType(ExperimentType type) {
-
+            if (type == experimentType) {
+                return;
+            }
         if (type != experimentType) {
+
             experimentType = type;
             renderOptions.refreshDefaults(type);
 
@@ -308,10 +294,14 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
                 setVisible(showAlignments);
                 IGV.getInstance().revalidateTrackPanels();
             }
+
+            //ExperimentTypeChangeEvent event = new ExperimentTypeChangeEvent(this, experimentType);
+            //IGVEventBus.getInstance().post(event);
+
         }
     }
 
-    private ExperimentType getExperimentType() {
+    ExperimentType getExperimentType() {
         return experimentType;
     }
 
@@ -330,13 +320,7 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
     }
 
     private void setRenderOptions(RenderOptions renderOptions) {
-
         this.renderOptions = renderOptions;
-
-    }
-
-    RenderOptions getRenderOptions() {
-        return this.renderOptions;
     }
 
     public CoverageTrack getCoverageTrack() {
@@ -701,8 +685,7 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
             h = expandedHeight;
         } else if (getDisplayMode() == DisplayMode.COLLAPSED) {
             h = collapsedHeight;
-        }
-        else {
+        } else {
             int visHeight = visibleRect.height;
             int depth = dataManager.getNLevels();
             if (depth == 0) {
@@ -811,6 +794,17 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
      */
     public boolean sortRows(SortOption option, ReferenceFrame referenceFrame, double location, String tag) {
         return dataManager.sortRows(option, referenceFrame, location, tag);
+    }
+
+    public static void sortAlignmentTracks(SortOption option, String tag) {
+
+        IGV.getInstance().sortAlignmentTracks(option, tag);
+        Collection<IGVPreferences> allPrefs = PreferencesManager.getAllPreferences();
+        for (IGVPreferences prefs : allPrefs) {
+            prefs.put(SAM_SORT_OPTION, option.toString());
+            prefs.put(SAM_SORT_BY_TAG, tag);
+        }
+        refresh();
     }
 
     /**
@@ -1390,7 +1384,10 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
             //         addSeparator();
             //          addExpandInsertions();
 
-            if (dataManager.inferredExperimentType == ExperimentType.THIRD_GEN) {
+            addSeparator();
+            addExperimentTypeMenuItem();
+
+            if (experimentType == ExperimentType.THIRD_GEN) {
                 addHaplotype(e);
             }
 
@@ -1405,6 +1402,7 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
             addGroupMenuItem(e);
             addSortMenuItem();
             addColorByMenuItem();
+            //addFilterMenuItem();
             addPackMenuItem();
 
             addSeparator();
@@ -1438,6 +1436,7 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
             addCopySequenceItem(e);
 
             addBlatItem(e);
+            addBlatClippingItems(e);
             addConsensusSequence(e);
 
             AlignmentBlock insertion = getInsertion(clickedAlignment, e.getMouseEvent().getX());
@@ -1638,32 +1637,38 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
         public void addSelectByNameItem() {
             // Change track height by attribute
             JMenuItem item = new JMenuItem("Select by name...");
-            item.addActionListener(new ActionListener() {
-
-                public void actionPerformed(ActionEvent aEvt) {
-                    String val = MessageUtils.showInputDialog("Enter read name: ");
-                    if (val != null && val.trim().length() > 0) {
-                        selectedReadNames.put(val, readNamePalette.get(val));
-                        refresh();
-                    }
+            item.addActionListener(aEvt -> {
+                String val = MessageUtils.showInputDialog("Enter read name: ");
+                if (val != null && val.trim().length() > 0) {
+                    selectedReadNames.put(val, readNamePalette.get(val));
+                    refresh();
                 }
             });
-
             add(item);
         }
 
-        private JCheckBoxMenuItem getGroupMenuItem(String label, final GroupOption option) {
+        public void addExperimentTypeMenuItem() {
+            Map<String, ExperimentType> mappings = new LinkedHashMap<>();
+            mappings.put("Other", ExperimentType.OTHER);
+            mappings.put("RNA", ExperimentType.RNA);
+            mappings.put("3rd Gen", ExperimentType.THIRD_GEN);
+            //mappings.put("Bisulfite", ExperimentType.BISULFITE);
+            JMenu groupMenu = new JMenu("Experiment Type");
+            ButtonGroup group = new ButtonGroup();
+            for (Map.Entry<String, ExperimentType> el : mappings.entrySet()) {
+                JCheckBoxMenuItem mi = getExperimentTypeMenuItem(el.getKey(), el.getValue());
+                groupMenu.add(mi);
+                group.add(mi);
+            }
+            add(groupMenu);
+        }
+
+        private JCheckBoxMenuItem getExperimentTypeMenuItem(String label, final ExperimentType option) {
             JCheckBoxMenuItem mi = new JCheckBoxMenuItem(label);
-            mi.setSelected(renderOptions.getGroupByOption() == option);
-            mi.addActionListener(new ActionListener() {
-
-                public void actionPerformed(ActionEvent aEvt) {
-                    IGV.getInstance().groupAlignmentTracks(option, null, null);
-                    refresh();
-
-                }
+            mi.setSelected(AlignmentTrack.this.getExperimentType() == option);
+            mi.addActionListener(aEvt -> {
+                AlignmentTrack.this.setExperimentType(option);
             });
-
             return mi;
         }
 
@@ -1740,6 +1745,19 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
             add(groupMenu);
         }
 
+        private JCheckBoxMenuItem getGroupMenuItem(String label, final GroupOption option) {
+            JCheckBoxMenuItem mi = new JCheckBoxMenuItem(label);
+            mi.setSelected(renderOptions.getGroupByOption() == option);
+            mi.addActionListener(new ActionListener() {
+                public void actionPerformed(ActionEvent aEvt) {
+                    IGV.getInstance().groupAlignmentTracks(option, null, null);
+                    refresh();
+
+                }
+            });
+            return mi;
+        }
+
         private JMenuItem getSortMenuItem(String label, final SortOption option) {
             JMenuItem mi = new JMenuItem(label);
             mi.addActionListener(aEvt -> sortAlignmentTracks(option, null));
@@ -1792,6 +1810,27 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
 
             add(sortMenu);
         }
+
+        public void addFilterMenuItem() {
+            JMenu filterMenu = new JMenu("Filter alignments by");
+            JMenuItem mi = new JMenuItem("mapping quality");
+            mi.addActionListener(aEvt -> {
+                // TODO -- use current value for default
+                String defString = PreferencesManager.getPreferences().get(SAM_QUALITY_THRESHOLD);
+                if (defString == null) defString = "";
+                String mqString = MessageUtils.showInputDialog("Minimum mapping quality: ", defString);
+                try {
+                    int mq = Integer.parseInt(mqString);
+                    // TODO do something with this
+                    System.out.println(mq);
+                } catch (NumberFormatException e) {
+                    MessageUtils.showMessage("Mapping quality must be an integer");
+                }
+            });
+            filterMenu.add(mi);
+            add(filterMenu);
+        }
+
 
         private void setBisulfiteContext(BisulfiteContext option) {
             renderOptions.bisulfiteContext = option;
@@ -2128,7 +2167,7 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
             final JMenuItem item = new JMenuItem("Copy read sequence");
             add(item);
 
-            final Alignment alignment = getAlignment(te);
+            final Alignment alignment = getSpecficAlignment(te);
             if (alignment == null) {
                 item.setEnabled(false);
                 return;
@@ -2167,9 +2206,49 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
             item.addActionListener(aEvt -> {
                 String blatSeq = alignment.getReadStrand() == Strand.NEGATIVE ?
                         SequenceTrack.getReverseComplement(seq) : seq;
-                BlatClient.doBlatQuery(blatSeq);
+                BlatClient.doBlatQuery(blatSeq, alignment.getReadName());
             });
 
+        }
+
+        public void addBlatClippingItems(final TrackClickEvent te) {
+            final Alignment alignment = getSpecficAlignment(te);
+            if (alignment == null) {
+                return;
+            }
+
+            int clippingThreshold = BlatClient.MINIMUM_BLAT_LENGTH;
+
+            int[] clipping = SAMAlignment.getClipping(alignment.getCigarString());
+            /* Add a "BLAT left clipped sequence" item if there is significant left clipping. */
+            if (clipping[1] > clippingThreshold) {
+                final JMenuItem lcItem = new JMenuItem("Blat left-clipped sequence");
+                add(lcItem);
+
+                lcItem.addActionListener(aEvt -> {
+                    String lcSeq = alignment.getReadSequence().substring(0, clipping[1]);
+                    if (alignment.getReadStrand() == Strand.NEGATIVE) {
+                        lcSeq = SequenceTrack.getReverseComplement(lcSeq);
+                    }
+                    BlatClient.doBlatQuery(lcSeq, alignment.getReadName() + " - left clip");
+                });
+            }
+            /* Add a "BLAT right clipped sequence" item if there is significant right clipping. */
+            if (clipping[3] > clippingThreshold) {
+                final JMenuItem lcItem = new JMenuItem("Blat right-clipped sequence");
+                add(lcItem);
+
+                lcItem.addActionListener(aEvt -> {
+                    String seq = alignment.getReadSequence();
+                    int seqLength = seq.length();
+
+                    String rcSeq = seq.substring(seqLength - clipping[3], seqLength);
+                    if (alignment.getReadStrand() == Strand.NEGATIVE) {
+                        rcSeq = SequenceTrack.getReverseComplement(rcSeq);
+                    }
+                    BlatClient.doBlatQuery(rcSeq, alignment.getReadName() + " - right clip");
+                });
+            }
         }
 
         public void addExtViewItem(final TrackClickEvent te) {
@@ -2568,7 +2647,6 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
             IGVPreferences prefs = getPreferences(experimentType);
             defaultValues = new DefaultValues(prefs);
         }
-
 
         @Override
         public void marshalXML(Document document, Element element) {

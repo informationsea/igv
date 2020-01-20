@@ -274,9 +274,9 @@ public class IGV implements IGVEventObserver {
 
     private void consumeEvents(Component glassPane) {
 
-        glassPane.addMouseListener(new MouseAdapter() {
+        glassPane.addMouseListener(new IGVMouseInputAdapter() {
             @Override
-            public void mouseClicked(MouseEvent e) {
+            public void igvMouseClicked(MouseEvent e) {
 
                 Point glassPanePoint = e.getPoint();
                 Container container = IGV.this.contentPane;
@@ -295,6 +295,7 @@ public class IGV implements IGVEventObserver {
 
             @Override
             public void mousePressed(MouseEvent e) {
+                super.mousePressed(e);
                 e.consume();
 
             }
@@ -697,7 +698,7 @@ public class IGV implements IGVEventObserver {
             if (msg != null && msg.toLowerCase().startsWith("error")) {
                 MessageUtils.showMessage(msg);
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("Error creating exporting image ", e);
             MessageUtils.showMessage(("Error creating the image file: " + defaultFile + "<br> "
                     + e.getMessage()));
@@ -720,7 +721,7 @@ public class IGV implements IGVEventObserver {
      * @api
      * @see SnapshotFileChooser.SnapshotFileType
      */
-    public String createSnapshotNonInteractive(Component target, File file, boolean paintOffscreen) throws IOException {
+    public String createSnapshotNonInteractive(Component target, File file, boolean paintOffscreen) throws Exception {
 
         log.debug("Creating snapshot: " + file.getName());
 
@@ -734,7 +735,7 @@ public class IGV implements IGVEventObserver {
         SnapshotFileChooser.SnapshotFileType type = SnapshotFileChooser.getSnapshotFileType(extension);
 
         String message;
-        IOException exc = null;
+        Exception exc = null;
 
         if (type == SnapshotFileChooser.SnapshotFileType.NULL) {
             message = "ERROR: Unknown file extension " + extension;
@@ -750,7 +751,7 @@ public class IGV implements IGVEventObserver {
         try {
             setExportingSnapshot(true);
             message = SnapshotUtilities.doComponentSnapshot(target, file, type, paintOffscreen);
-        } catch (IOException e) {
+        } catch (Exception e) {
             exc = e;
             message = e.getMessage();
         } finally {
