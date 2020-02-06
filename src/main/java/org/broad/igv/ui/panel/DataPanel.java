@@ -80,11 +80,8 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
     // Thread pool for loading data
     private static final ExecutorService threadExecutor = Executors.newFixedThreadPool(5);
 
-    private boolean isWaitingForToolTipText = false;
-
     private DataPanelTool defaultTool;
     private DataPanelTool currentTool;
-    // private Point tooltipTextPosition;
     private ReferenceFrame frame;
     private DataPanelContainer parent;
     private DataPanelPainter painter;
@@ -380,15 +377,6 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
         return false;
     }
 
-    protected String generateTileKey(final String chr, int t,
-                                     final int zoomLevel) {
-
-        // Fetch image for this chromosome, zoomlevel, and tile.  If found
-        // draw immediately
-        final String key = chr + "_z_" + zoomLevel + "_t_" + t;
-        return key;
-    }
-
 
     /**
      * Do not remove - Used for debugging only
@@ -632,6 +620,7 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
         private ClickTaskScheduler clickScheduler = new ClickTaskScheduler();
 
         long lastClickTime = 0;
+        MouseEvent mouseDown = null;
 
 
         @Override
@@ -660,14 +649,14 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
             if (SwingUtilities.getWindowAncestor(DataPanel.this).isActive()) {
                 DataPanel.this.requestFocus();
             }
-
             if (e.isPopupTrigger()) {
                 doPopupMenu(e);
+                e.consume();
             } else {
                 if (currentTool != null)
                     currentTool.mousePressed(e);
+                mouseDown = e;
             }
-
         }
 
         /**
@@ -676,13 +665,16 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
          */
         @Override
         public void mouseReleased(MouseEvent e) {
-
             if (e.isPopupTrigger()) {
                 doPopupMenu(e);
+                e.consume();
             } else {
-                if (currentTool != null)
+                if (mouseDown != null && distance(mouseDown, e) < 5) {
+                    doMouseClick(e);
+                } else if (currentTool != null)
                     currentTool.mouseReleased(e);
             }
+            mouseDown = null;
         }
 
         private void doPopupMenu(MouseEvent e) {
@@ -690,6 +682,12 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
             parent.selectTracks(e);
             TrackClickEvent te = new TrackClickEvent(e, frame);
             parent.openPopupMenu(te);
+        }
+
+        private double distance(MouseEvent e1, MouseEvent e2) {
+            double dx = e1.getX() - e2.getX();
+            double dy = e1.getY() - e2.getY();
+            return Math.sqrt(dx * dx + dy * dy);
         }
 
 
@@ -700,8 +698,43 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
          */
         @Override
         public void mouseDragged(MouseEvent e) {
-            if (currentTool != null)
+            if (mouseDown != null && currentTool != null)
                 currentTool.mouseDragged(e);
+        }
+
+        @Override
+        public void mouseEntered(MouseEvent e) {
+            mouseDown = null;
+        }
+
+        @Override
+        public void mouseExited(MouseEvent e) {
+            mouseDown = null;
+        }
+
+        /**
+         * Zoom in/out when modifier + scroll wheel used
+         *
+         * @param e
+         */
+        @Override
+        public void mouseWheelMoved(MouseWheelEvent e) {
+            //we use either ctrl or meta to deal with PCs and Macs
+            if (e.isControlDown() || e.isMetaDown()) {
+                int wheelRotation = e.getWheelRotation();
+                //Mouse move up is negative, that should zoom in
+                int zoomIncr = -wheelRotation / 2;
+                getFrame().doZoomIncrement(zoomIncr);
+            }
+            //TODO Use this to pan. Seems weird, but it's how side scrolling on my mouse gets interpreted,
+            //so could be handy for people with 2D wheels
+//            else if(e.isShiftDown()){
+//                System.out.println(e);
+//            }
+            else {
+                //Default action if no modifier
+                e.getComponent().getParent().dispatchEvent(e);
+            }
         }
 
 
@@ -709,6 +742,10 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
          * The mouse was clicked. If this is the second click of a double click, cancel the scheduled single click task.
          * The shift and alt keys are alternative  zoom options
          * shift zooms in by 8x,  alt zooms out by 2x
+         * <p>
+         * NOTE: mouseClick is not used because in Java a mouseClick event is emitted only if the mouse has not
+         * moved at all between press and release.  This is difficult to do, even when trying.
+         * <p>
          * <p/>
          * TODO -- the "currentTool" is also a mouselistener, so there are two.  This makes mouse event handling
          * TODO -- needlessly complicated, which handler has preference, etc.  Move this code to the default
@@ -716,13 +753,12 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
          *
          * @param e
          */
-        @Override
-        public void mouseClicked(final MouseEvent e) {
+
+        public void doMouseClick(final MouseEvent e) {
 
             long clickTime = System.currentTimeMillis();
 
-            // ctrl-mouse down is the mac popup trigger, but you will also get a clck even.  Ignore the click.
-            if (Globals.IS_MAC && e.isControlDown()) {
+            if (e.isPopupTrigger()) {
                 return;
             }
 
@@ -814,30 +850,6 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
             }
         }
 
-        /**
-         * Zoom in/out when modifier + scroll wheel used
-         *
-         * @param e
-         */
-        @Override
-        public void mouseWheelMoved(MouseWheelEvent e) {
-            //we use either ctrl or meta to deal with PCs and Macs
-            if (e.isControlDown() || e.isMetaDown()) {
-                int wheelRotation = e.getWheelRotation();
-                //Mouse move up is negative, that should zoom in
-                int zoomIncr = -wheelRotation / 2;
-                getFrame().doZoomIncrement(zoomIncr);
-            }
-            //TODO Use this to pan. Seems weird, but it's how side scrolling on my mouse gets interpreted,
-            //so could be handy for people with 2D wheels
-//            else if(e.isShiftDown()){
-//                System.out.println(e);
-//            }
-            else {
-                //Default action if no modifier
-                e.getComponent().getParent().dispatchEvent(e);
-            }
-        }
     }
 
     /**

@@ -17,6 +17,7 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
 import javax.swing.*;
+import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.IOException;
@@ -39,18 +40,17 @@ public class BlatTrack extends FeatureTrack {
 
     List<PSLRecord> features;
 
-    public BlatTrack(String species, String sequence, String db, Genome genome) {
+    public BlatTrack(String species, String sequence, String db, Genome genome, String trackLabel) {
 
-        super(sequence, "Blat");
+        super(sequence, trackLabel);
 
         this.sequence = sequence;
         this.db = db;
         this.species = species;
         this.genome = genome;
 
-
         setDisplayMode(Track.DisplayMode.SQUISHED);
-
+        setColor(Color.DARK_GRAY);
         init();
     }
 

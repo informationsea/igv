@@ -30,6 +30,7 @@ import org.broad.igv.DirectoryManager;
 import org.broad.igv.Globals;
 import org.broad.igv.annotations.ForTesting;
 import org.broad.igv.aws.S3LoadDialog;
+import org.broad.igv.batch.CommandExecutor;
 import org.broad.igv.charts.ScatterPlotUtils;
 import org.broad.igv.event.GenomeChangeEvent;
 import org.broad.igv.event.IGVEventBus;
@@ -39,9 +40,6 @@ import org.broad.igv.feature.genome.RemoveGenomesDialog;
 import org.broad.igv.google.GoogleUtils;
 import org.broad.igv.google.OAuthProvider;
 import org.broad.igv.google.OAuthUtils;
-import org.broad.igv.gs.GSOpenSessionMenuAction;
-import org.broad.igv.gs.GSSaveSessionMenuAction;
-import org.broad.igv.gs.GSUtils;
 import org.broad.igv.lists.GeneListManagerUI;
 import org.broad.igv.prefs.PreferencesManager;
 import org.broad.igv.tools.IgvToolsGui;
@@ -177,15 +175,16 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
         refreshToolsMenu();
         menus.add(toolsMenu);
 
-        menus.add(createGenomeSpaceMenu());
         extrasMenu = createExtrasMenu();
         //extrasMenu.setVisible(false);
         menus.add(extrasMenu);
 
         try {
             googleMenu = createGoogleMenu();
-            googleMenu.setVisible(PreferencesManager.getPreferences().getAsBoolean(ENABLE_GOOGLE_MENU));
-            menus.add(googleMenu);
+            if(googleMenu != null) {
+                googleMenu.setVisible(PreferencesManager.getPreferences().getAsBoolean(ENABLE_GOOGLE_MENU));
+                menus.add(googleMenu);
+            }
         } catch (IOException e) {
             log.error("Error creating google menu: " + e.getMessage());
         }
@@ -489,6 +488,17 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
         filterTracksAction.setToolTipText(UIConstants.FILTER_TRACKS_TOOLTIP);
         menuItems.add(MenuAndToolbarUtils.createMenuItem(filterTracksAction));
 
+        // Rename tracks
+        menuAction = new RenameTracksMenuAction("Rename Tracks... ", KeyEvent.VK_R, IGV.getInstance());
+        menuAction.setToolTipText(UIConstants.RENAME_TRACKS_TOOLTIP);
+        menuItems.add(MenuAndToolbarUtils.createMenuItem(menuAction));
+
+        // Overlay tracks
+        menuAction = new OverlayTracksMenuAction("Overlay Data Tracks... ", KeyEvent.VK_O, IGV.getInstance());
+        menuAction.setToolTipText(UIConstants.OVERLAY_TRACKS_TOOLTIP);
+        menuItems.add(MenuAndToolbarUtils.createMenuItem(menuAction));
+
+
         menuItems.add(new JSeparator());
 
         // Reset Tracks
@@ -636,6 +646,17 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
                     public void actionPerformed(ActionEvent e) {
                         ReorderPanelsDialog dlg = new ReorderPanelsDialog(IGV.getMainFrame());
                         dlg.setVisible(true);
+                    }
+                };
+        menuItems.add(MenuAndToolbarUtils.createMenuItem(menuAction));
+
+        menuAction =
+                new MenuAction("Add New Panel", null, KeyEvent.VK_S) {
+
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+                        String newPanelName = "Panel" + System.currentTimeMillis();
+                        IGV.getInstance().addDataPanel(newPanelName);
                     }
                 };
         menuItems.add(MenuAndToolbarUtils.createMenuItem(menuAction));
@@ -807,73 +828,29 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
         }
     }
 
-    private JMenu createGenomeSpaceMenu() {
-
-        JMenu menu = new JMenu("GenomeSpace");
-
-        MenuAction menuAction = null;
-        menuAction = new LoadFromGSMenuAction("Load File from GenomeSpace...", KeyEvent.VK_U, igv);
-        menu.add(MenuAndToolbarUtils.createMenuItem(menuAction));
-
-        menu.addSeparator();
-        menuAction = new LoadGenomeFromGSMenuAction("Load Genome from GenomeSpace...", KeyEvent.VK_Z, igv);
-        menu.add(MenuAndToolbarUtils.createMenuItem(menuAction));
-
-        menu.addSeparator();
-
-        menuAction = new GSSaveSessionMenuAction("Save Session to GenomeSpace...", igv);
-        menu.add(MenuAndToolbarUtils.createMenuItem(menuAction));
-
-        menuAction = new GSOpenSessionMenuAction("Load Session from GenomeSpace...", igv);
-        menu.add(MenuAndToolbarUtils.createMenuItem(menuAction));
-
-        menu.add(new JSeparator());
-        menuAction = new MenuAction("Logout") {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                GSUtils.logout();
-                if (MessageUtils.confirm("You must shutdown IGV to complete the GenomeSpace logout. Shutdown now?")) {
-                    doExitApplication();
-                }
-            }
-        };
-        menu.add(MenuAndToolbarUtils.createMenuItem(menuAction));
-
-        menu.add(new JSeparator());
-        menuAction =
-                new MenuAction("Register... ") {
-
-                    @Override
-                    public void actionPerformed(ActionEvent e) {
-                        try {
-                            BrowserLauncher.openURL(GENOMESPACE_REG_PAGE);
-                        } catch (IOException ex) {
-                            log.error("Error opening browser", ex);
-                        }
-
-                    }
-                };
-        menuAction.setToolTipText(GENOMESPACE_REG_TOOLTIP);
-        menu.add(MenuAndToolbarUtils.createMenuItem(menuAction));
-
-
-        menu.setVisible(PreferencesManager.getPreferences().getAsBoolean(GENOME_SPACE_ENABLE));
-
-
-        return menu;
-    }
-
     private JMenu createExtrasMenu() {
 
         List<JComponent> menuItems = new ArrayList<JComponent>();
+
+        JMenuItem memTest = new JMenuItem("Memory test");
+        memTest.addActionListener(e -> {
+            CommandExecutor exe = new CommandExecutor();
+            int count = 1;
+            int start = 0;
+            exe.execute("snapshotDirectory /Users/jrobinso/Downloads/tmp");
+            while(count++ < 10000) {
+                exe.execute("goto chr1:" + start + "-" + (start + 1000));
+                exe.execute("snapshot");
+                start += 1000;
+            }
+        });
+        menuItems.add(memTest);
 
         MenuAction menuAction = null;
 
         // Preferences reset
         menuAction = new ResetPreferencesAction("Reset Preferences", IGV.getInstance());
         menuItems.add(MenuAndToolbarUtils.createMenuItem(menuAction));
-
-
         menuItems.add(new JSeparator());
 
 
@@ -1047,67 +1024,69 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
         // Dynamically name menu - dwm08
         final OAuthProvider oauth = OAuthUtils.getInstance().getProvider();
 
-        oauth.setAuthProvider("Google");
-        JMenu menu = new JMenu(oauth.getAuthProvider());
+        if(oauth != null) {  // TODO -- how do we know this is a google provider?
+            oauth.setAuthProvider("Google");
+            JMenu menu = new JMenu(oauth.getAuthProvider());
 
-        final JMenuItem login = new JMenuItem("Login ... ");
-        login.addActionListener(e -> {
-            try {
-                oauth.openAuthorizationPage();
-            } catch (Exception ex) {
-                MessageUtils.showErrorMessage("Error fetching oAuth tokens.  See log for details", ex);
-                log.error("Error fetching oAuth tokens", ex);
-            }
+            final JMenuItem login = new JMenuItem("Login ... ");
+            login.addActionListener(e -> {
+                try {
+                    oauth.openAuthorizationPage();
+                } catch (Exception ex) {
+                    MessageUtils.showErrorMessage("Error fetching oAuth tokens.  See log for details", ex);
+                    log.error("Error fetching oAuth tokens", ex);
+                }
 
-        });
-        //login.setEnabled(false);
-        menu.add(login);
-
-
-        final JMenuItem logout = new JMenuItem("Logout ");
-        logout.addActionListener(e -> {
-            oauth.logout();
-            GoogleUtils.setProjectID(null);
-        });
-        logout.setEnabled(false);
-        menu.add(logout);
-
-        final JMenuItem projectID = new JMenuItem("Enter Project ID ...");
-        projectID.addActionListener(e -> GoogleUtils.enterGoogleProjectID());
-        menu.add(projectID);
+            });
+            //login.setEnabled(false);
+            menu.add(login);
 
 
-        menu.addMenuListener(new MenuListener() {
-            @Override
-            public void menuSelected(MenuEvent e) {
-                Runnable runnable = () -> {
-                    boolean loggedIn = OAuthUtils.getInstance().getProvider().isLoggedIn();
+            final JMenuItem logout = new JMenuItem("Logout ");
+            logout.addActionListener(e -> {
+                oauth.logout();
+                GoogleUtils.setProjectID(null);
+            });
+            logout.setEnabled(false);
+            menu.add(logout);
 
-                    if (loggedIn) {
-                        login.setText(oauth.getCurrentUserName());
-                    } else {
-                        login.setText("Login ...");
-                    }
-                    login.setEnabled(!loggedIn);
-                    logout.setEnabled(loggedIn);
-                };
+            final JMenuItem projectID = new JMenuItem("Enter Project ID ...");
+            projectID.addActionListener(e -> GoogleUtils.enterGoogleProjectID());
+            menu.add(projectID);
 
-                LongRunningTask.submit(runnable);
-            }
+            menu.addMenuListener(new MenuListener() {
+                @Override
+                public void menuSelected(MenuEvent e) {
+                    Runnable runnable = () -> {
+                        boolean loggedIn = OAuthUtils.getInstance().getProvider().isLoggedIn();
 
-            @Override
-            public void menuDeselected(MenuEvent e) {
+                        if (loggedIn) {
+                            login.setText(oauth.getCurrentUserName());
+                        } else {
+                            login.setText("Login ...");
+                        }
+                        login.setEnabled(!loggedIn);
+                        logout.setEnabled(loggedIn);
+                    };
 
-            }
+                    LongRunningTask.submit(runnable);
+                }
 
-            @Override
-            public void menuCanceled(MenuEvent e) {
+                @Override
+                public void menuDeselected(MenuEvent e) {
 
-            }
+                }
 
-        });
+                @Override
+                public void menuCanceled(MenuEvent e) {
 
-        return menu;
+                }
+
+            });
+            return menu;
+        } else {
+            return null;
+        }
     }
 
 //    public void enableRemoveGenomes() {
@@ -1182,7 +1161,9 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
     }
 
     public void enableGoogleMenu(boolean aBoolean) {
-        googleMenu.setVisible(aBoolean);
+        if(googleMenu != null) {
+            googleMenu.setVisible(aBoolean);
+        }
     }
 
     @Override
