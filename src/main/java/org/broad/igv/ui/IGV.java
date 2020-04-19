@@ -51,7 +51,7 @@ import org.broad.igv.feature.genome.*;
 import org.broad.igv.google.OAuthUtils;
 import org.broad.igv.lists.GeneList;
 import org.broad.igv.prefs.IGVPreferences;
-import org.broad.igv.prefs.PreferenceEditorNew;
+import org.broad.igv.prefs.PreferencesEditor;
 import org.broad.igv.prefs.PreferencesManager;
 import org.broad.igv.sam.AlignmentTrack;
 import org.broad.igv.sam.InsertionSelectionEvent;
@@ -598,7 +598,7 @@ public class IGV implements IGVEventObserver {
 
     final public void doViewPreferences() {
         try {
-            PreferenceEditorNew.open(this.mainFrame);
+            PreferencesEditor.open(this.mainFrame);
         } catch (Exception e) {
             log.error("Error openining preference dialog", e);
         }
@@ -945,6 +945,7 @@ public class IGV implements IGVEventObserver {
     public void newSession() {
         resetSession(null);
         setGenomeTracks(GenomeManager.getInstance().getCurrentGenome().getGeneTrack());
+        this.menuBar.disableReloadSession();
     }
 
     /**
@@ -1119,52 +1120,26 @@ public class IGV implements IGVEventObserver {
      * @return true if successful
      */
     public boolean restoreSessionSynchronous(String sessionPath, String locus, boolean merge) {
+
         InputStream inputStream = null;
         try {
+            try {
+                inputStream = new BufferedInputStream(ParsingUtils.openInputStreamGZ(new ResourceLocator(sessionPath)));
+            } catch (IOException e) {
+                log.error("Error loading session", e);
+                MessageUtils.showMessage("Error loading session: " + sessionPath);
+                return false;
+            }
+
             if (!merge) {
                 // Do this first, it closes all open SeekableFileStreams.
                 resetSession(sessionPath);
             }
 
             setStatusBarMessage("Opening session...");
-            inputStream = new BufferedInputStream(ParsingUtils.openInputStreamGZ(new ResourceLocator(sessionPath)));
-
-            boolean isUCSC = sessionPath.endsWith(".session") || sessionPath.endsWith(".session.txt");
-            boolean isIndexAware = sessionPath.endsWith(".idxsession") || sessionPath.endsWith(".idxsession.txt");
-            final SessionReader sessionReader = isUCSC ?
-                    new UCSCSessionReader(this) :
-                    (isIndexAware ? new IndexAwareSessionReader(this) : new IGVSessionReader(this));
-
-            sessionReader.loadSession(inputStream, session, sessionPath);
-
-            String searchText = locus == null ? session.getLocus() : locus;
-
-            // NOTE: Nothing to do if chr == all
-            if (!FrameManager.isGeneListMode() && searchText != null &&
-                    !searchText.equals(Globals.CHR_ALL) && searchText.trim().length() > 0) {
-                goToLocus(searchText);
-            }
 
 
-            mainFrame.setTitle(UIConstants.APPLICATION_NAME + " - Session: " + sessionPath);
-            System.gc();
-
-
-            double[] dividerFractions = session.getDividerFractions();
-            if (dividerFractions != null) {
-                contentPane.getMainPanel().setDividerFractions(dividerFractions);
-            }
-            session.clearDividerLocations();
-
-            //If there's a RegionNavigatorDialog, kill it.
-            //this could be done through the Observer that RND uses, I suppose.  Not sure that's cleaner
-            RegionNavigatorDialog.destroyInstance();
-
-            if (!getRecentSessionList().contains(sessionPath)) {
-                getRecentSessionList().addFirst(sessionPath);
-            }
-            doRefresh();
-            return true;
+            return restoreSessionFromStream(sessionPath, locus, inputStream);
 
         } catch (Exception e) {
             String message = "Error loading session session : <br>&nbsp;&nbsp;" + sessionPath + "<br>" +
@@ -1181,6 +1156,48 @@ public class IGV implements IGVEventObserver {
                 resetStatusMessage();
             }
         }
+    }
+
+    public boolean restoreSessionFromStream(String sessionPath, String locus, InputStream inputStream) throws IOException {
+        boolean isUCSC = sessionPath != null && (sessionPath.endsWith(".session") || sessionPath.endsWith(".session.txt"));
+        boolean isIndexAware = sessionPath != null && (sessionPath.endsWith(".idxsession") || sessionPath.endsWith(".idxsession.txt"));
+        final SessionReader sessionReader = isUCSC ?
+                new UCSCSessionReader(this) :
+                (isIndexAware ? new IndexAwareSessionReader(this) : new IGVSessionReader(this));
+
+        sessionReader.loadSession(inputStream, session, sessionPath);
+
+        String searchText = locus == null ? session.getLocus() : locus;
+
+        // NOTE: Nothing to do if chr == all
+        if (!FrameManager.isGeneListMode() && searchText != null &&
+                !searchText.equals(Globals.CHR_ALL) && searchText.trim().length() > 0) {
+            goToLocus(searchText);
+        }
+
+
+        System.gc();
+
+        double[] dividerFractions = session.getDividerFractions();
+        if (dividerFractions != null) {
+            contentPane.getMainPanel().setDividerFractions(dividerFractions);
+        }
+        session.clearDividerLocations();
+
+        //If there's a RegionNavigatorDialog, kill it.
+        //this could be done through the Observer that RND uses, I suppose.  Not sure that's cleaner
+        RegionNavigatorDialog.destroyInstance();
+
+        if (sessionPath != null) {
+            mainFrame.setTitle(UIConstants.APPLICATION_NAME + " - Session: " + sessionPath);
+            if (!getRecentSessionList().contains(sessionPath)) {
+                getRecentSessionList().addFirst(sessionPath);
+            }
+            this.menuBar.enableReloadSession();
+        }
+
+        doRefresh();
+        return true;
     }
 
 

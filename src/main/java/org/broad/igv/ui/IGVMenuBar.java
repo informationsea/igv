@@ -112,6 +112,7 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
     private JMenu googleMenu;
     private JMenu AWSMenu;
     private JMenuItem encodeMenuItem;
+    private JMenuItem reloadSessionItem;
 
     public void notifyGenomeServerReachable(boolean reachable) {
         if (loadFromServerMenuItem != null) {
@@ -181,7 +182,7 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
 
         try {
             googleMenu = createGoogleMenu();
-            if(googleMenu != null) {
+            if (googleMenu != null) {
                 googleMenu.setVisible(PreferencesManager.getPreferences().getAsBoolean(ENABLE_GOOGLE_MENU));
                 menus.add(googleMenu);
             }
@@ -302,6 +303,12 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
         String genomeId = IGV.getInstance().getGenomeManager().getGenomeId();
         encodeMenuItem.setVisible(EncodeFileBrowser.genomeSupported(genomeId));
 
+
+        menuItems.add(new JSeparator());
+        menuAction = new ReloadTracksMenuAction("Reload Tracks", -1, igv);
+        menuAction.setToolTipText(RELOAD_SESSION_TOOLTIP);
+        menuItems.add(MenuAndToolbarUtils.createMenuItem(menuAction));
+
         menuItems.add(new JSeparator());
 
         // Session menu items
@@ -320,7 +327,8 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
 
         menuAction = new ReloadSessionMenuAction("Reload Session", -1, igv);
         menuAction.setToolTipText(RELOAD_SESSION_TOOLTIP);
-        JMenuItem reloadSessionItem = MenuAndToolbarUtils.createMenuItem(menuAction);
+        reloadSessionItem = MenuAndToolbarUtils.createMenuItem(menuAction);
+        reloadSessionItem.setEnabled(false);
         menuItems.add(reloadSessionItem);
 
         menuItems.add(new JSeparator());
@@ -363,7 +371,8 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
         if (recentSessions != null) {
             String[] sessions = recentSessions.split(";");
             for (String sessionPath : sessions) {
-                if (!igv.getRecentSessionList().contains(sessionPath)) {
+                if (!sessionPath.equals("null") &&
+                        !igv.getRecentSessionList().contains(sessionPath)) {
                     igv.getRecentSessionList().add(sessionPath);
                 }
 
@@ -371,9 +380,7 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
         }
 
         if (!IGV.getInstance().getRecentSessionList().isEmpty()) {
-
             menuItems.add(new JSeparator());
-
             // Now add menu items
             for (final String session : IGV.getInstance().getRecentSessionList()) {
                 OpenSessionMenuAction osMenuAction = new OpenSessionMenuAction(session, session, IGV.getInstance());
@@ -838,7 +845,7 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
             int count = 1;
             int start = 0;
             exe.execute("snapshotDirectory /Users/jrobinso/Downloads/tmp");
-            while(count++ < 10000) {
+            while (count++ < 10000) {
                 exe.execute("goto chr1:" + start + "-" + (start + 1000));
                 exe.execute("snapshot");
                 start += 1000;
@@ -1024,7 +1031,7 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
         // Dynamically name menu - dwm08
         final OAuthProvider oauth = OAuthUtils.getInstance().getProvider();
 
-        if(oauth != null) {  // TODO -- how do we know this is a google provider?
+        if (oauth != null) {  // TODO -- how do we know this is a google provider?
             oauth.setAuthProvider("Google");
             JMenu menu = new JMenu(oauth.getAuthProvider());
 
@@ -1140,9 +1147,7 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
 
         try {
             IGV.getInstance().saveStateForExit();
-
             Frame mainFrame = IGV.getMainFrame();
-
             PreferencesManager.getPreferences().setApplicationFrameBounds(mainFrame.getBounds());
 
             // Hide and close the application
@@ -1152,7 +1157,6 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
         } finally {
             System.exit(0);
         }
-
     }
 
     @ForTesting
@@ -1161,7 +1165,7 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
     }
 
     public void enableGoogleMenu(boolean aBoolean) {
-        if(googleMenu != null) {
+        if (googleMenu != null) {
             googleMenu.setVisible(aBoolean);
         }
     }
@@ -1172,5 +1176,13 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
         if (event instanceof GenomeChangeEvent) {
             UIUtilities.invokeOnEventThread(() -> encodeMenuItem.setVisible(EncodeFileBrowser.genomeSupported(((GenomeChangeEvent) event).genome.getId())));
         }
+    }
+
+    public void enableReloadSession() {
+        this.reloadSessionItem.setEnabled(true);
+    }
+
+    public void disableReloadSession() {
+        this.reloadSessionItem.setEnabled(false);
     }
 }
