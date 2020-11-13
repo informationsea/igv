@@ -23,56 +23,73 @@
  * THE SOFTWARE.
  */
 
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
 package org.broad.igv.ui.action;
 
+//~--- non-JDK imports --------------------------------------------------------
+
 import org.apache.log4j.Logger;
-import org.broad.igv.batch.BatchRunner;
 import org.broad.igv.prefs.PreferencesManager;
+import org.broad.igv.session.IGVSessionReader;
+import org.broad.igv.session.Session;
+import org.broad.igv.session.SessionWriter;
 import org.broad.igv.ui.IGV;
+import org.broad.igv.ui.UIConstants;
+import org.broad.igv.ui.WaitCursorManager;
 import org.broad.igv.ui.util.FileDialogUtils;
 
 import javax.swing.*;
-import java.awt.*;
 import java.awt.event.ActionEvent;
+import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 
+/**
+ * @author jrobinso
+ */
+public class ReloadTracksMenuAction extends MenuAction {
 
-public class RunScriptMenuAction extends MenuAction {
+    static Logger log = Logger.getLogger(SaveSessionMenuAction.class);
+    IGV igv;
 
-    static Logger log = Logger.getLogger(LoadFilesMenuAction.class);
-    IGV mainFrame;
-
-    public RunScriptMenuAction(String label, int mnemonic, IGV mainFrame) {
+    /**
+     *
+     *
+     * @param label
+     * @param mnemonic
+     * @param igv
+     */
+    public ReloadTracksMenuAction(String label, int mnemonic, IGV igv) {
         super(label, null, mnemonic);
-        this.mainFrame = mainFrame;
+        this.igv = igv;
     }
 
     /**
-     * Run the batch script.  This is PURPOSELY run on the event dispatch thread to maintain absolute synchronization
+     * Method description
+     *
      * @param e
      */
+    @Override
     public void actionPerformed(ActionEvent e) {
-        if (e.getActionCommand().equalsIgnoreCase("run batch script...")) {
-            File script = chooseScriptFile();
-            if (script != null && script.isFile()) {
-                final BatchRunner bRun = new BatchRunner(script.getPath());
-                bRun.run();
-            }
+
+        String currentSessionFilePath = igv.getSession().getPath();
+        Session currentSession = igv.getSession();
+        currentSession.setPath(currentSessionFilePath);
+        String xml = (new SessionWriter()).createXmlFromSession(currentSession, null);
+
+        igv.resetSession(currentSessionFilePath);
+        IGVSessionReader sessionReader = new IGVSessionReader(this.igv);
+        InputStream inputStream = new ByteArrayInputStream(xml.getBytes());
+        try {
+            igv.restoreSessionFromStream(currentSessionFilePath, null, inputStream);
+        } catch (IOException ex) {
+            log.error("Error reloading tracks", ex);
         }
     }
 
 
-    private File chooseScriptFile() {
-
-        File lastDirectoryFile = PreferencesManager.getPreferences().getLastTrackDirectory();
-        File scriptFile = FileDialogUtils.chooseFile("Select Script", lastDirectoryFile, FileDialog.LOAD);
-
-        if (scriptFile != null) {
-            // Store the last accessed file location
-            PreferencesManager.getPreferences().setLastTrackDirectory(scriptFile.getParentFile());
-        }
-
-        mainFrame.resetStatusMessage();
-        return scriptFile;
-    }
 }

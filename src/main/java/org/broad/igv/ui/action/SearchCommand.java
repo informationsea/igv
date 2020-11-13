@@ -431,6 +431,11 @@ public class SearchCommand {
             }
         }
 
+        // Show the "All chromosomes" view if the search string is "*"
+        if (chr.equals("*") || chr.toLowerCase().equals("all")) {
+            return new SearchResult(ResultType.CHROMOSOME, Globals.CHR_ALL, 0, 1);
+        }
+
         //startEnd will have coordinates if found.
         chr = genome.getCanonicalChrName(chr);
         Chromosome chromosome = genome.getChromosome(chr);
@@ -488,7 +493,7 @@ public class SearchCommand {
         try {
             String[] posTokens = posString.split("-");
             String startString = posTokens[0].replaceAll(",", "");
-            int start = Math.max(0, Integer.parseInt(startString));
+            int start = Math.max(0, Integer.parseInt(startString) - 1);
 
             // Default value for end
             int end = start + 1;
@@ -505,7 +510,7 @@ public class SearchCommand {
                 end = center + widen;
             }
 
-            return new int[]{Math.min(start, end) - 1, Math.max(start, end)};
+            return new int[]{Math.min(start, end), Math.max(start, end)};
         } catch (NumberFormatException numberFormatException) {
             return null;
         }
@@ -545,7 +550,7 @@ public class SearchCommand {
             this.chr = chr;
             this.start = start;
             this.end = end;
-            this.coords = Locus.getFormattedLocusString(chr, start + 1, end);
+            this.coords = Locus.getFormattedLocusString(chr, start, end);
             this.locus = this.coords;
         }
 

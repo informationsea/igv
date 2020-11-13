@@ -36,6 +36,7 @@ import org.broad.igv.event.DataLoadedEvent;
 import org.broad.igv.event.IGVEventBus;
 import org.broad.igv.event.IGVEventObserver;
 import org.broad.igv.feature.Locus;
+import org.broad.igv.feature.Range;
 import org.broad.igv.feature.RegionOfInterest;
 import org.broad.igv.feature.genome.GenomeManager;
 import org.broad.igv.google.Ga4ghAPIHelper;
@@ -130,9 +131,9 @@ public class CommandExecutor {
             } else if (cmd.equalsIgnoreCase("region")) {
                 defineRegion(param1, param2, param3, param4);
             } else if (cmd.equalsIgnoreCase("sort")) {
-                sort(param1, param2, param3, param4);
+                result = sort(param1, param2, param3, param4);
             } else if (cmd.equalsIgnoreCase("group")) {
-                group(param1, param2);
+                result = group(param1, param2);
             } else if (cmd.equalsIgnoreCase("collapse")) {
                 String trackName = parseTrackName(param1);
                 igv.setTrackDisplayMode(Track.DisplayMode.COLLAPSED, trackName);
@@ -185,6 +186,7 @@ public class CommandExecutor {
                 return result;
             }
 
+            igv.preloadAllTracks();
             igv.doRefresh();
 
             if (RuntimeUtils.getAvailableMemoryFraction() < 0.5) {
@@ -785,51 +787,73 @@ public class CommandExecutor {
     }
 
 
-    private void sort(String sortArg, String locusString, String param3, String param4) {
+    private String sort(String sortArg, String param2, String param3, String param4) {
 
         RegionScoreType regionSortOption = getRegionSortOption(sortArg);
-        String tag = "";
         if (regionSortOption != null) {
+            // Segmented copy number
             RegionOfInterest roi = null;
-            if (locusString != null) {
-                Locus locus = Locus.fromString(locusString);
+            if (param2 != null) {
+                Locus locus = Locus.fromString(param2);
                 if (locus != null) {
                     int start = Math.max(0, locus.getStart() - 1);
                     roi = new RegionOfInterest(locus.getChr(), start, locus.getEnd(), "");
                 }
             }
             igv.sortByRegionScore(roi, regionSortOption, FrameManager.getDefaultFrame());
-
+            return "OK";
         } else {
-            Double location = null;
-            if (param3 != null && param3.trim().length() > 0) {
-                try {
-                    location = new Double(param3.replace(",", ""));
-                    tag = param4;
-                } catch (NumberFormatException e) {
-                    tag = param3;
-                }
-            } else if (locusString != null && locusString.trim().length() > 0) {
-                try {
-                    location = new Double(locusString.replace(",", ""));
-                    tag = param4;
-                } catch (NumberFormatException e) {
-                    tag = param3;
-                }
+            // Alignments
+            String tag = null;
+            String locusString = null;
+            if (sortArg.equalsIgnoreCase("tag")) {
+                tag = param2;
+                locusString = param3;
+            } else {
+                locusString = param2;
             }
 
-            //Convert from 1-based to 0-based
-            if (location != null) location--;
-
+            Double location = null;
+            if (locusString != null && locusString.trim().length() > 0) {
+                // Apparently there have been 2 conventions for "location", a full locus string and a base position
+                // Try locus string first
+                Locus locus = Locus.fromString(locusString);
+                if (locus != null) {
+                    location = (double) locus.getStart();
+                } else {
+                    try {
+                        location = Double.valueOf(locusString.replace(",", ""));
+                        if (location != null) location--;
+                    } catch (NumberFormatException e) {
+                        return "Error parsing location: " + locusString;
+                    }
+                }
+            }
             igv.sortAlignmentTracks(getAlignmentSortOption(sortArg), location, tag);
-
+            igv.revalidateTrackPanels();
+            return "OK";
         }
-        igv.revalidateTrackPanels();
     }
 
-    private void group(String groupArg, String tagArg) {
-        igv.groupAlignmentTracks(getAlignmentGroupOption(groupArg), tagArg, null);
-        UIUtilities.invokeAndWaitOnEventThread(() -> igv.revalidateTrackPanels());
+    private String group(String groupArg, String tagArg) {
+        final AlignmentTrack.GroupOption groupOption = getAlignmentGroupOption(groupArg);
+        Range r = null;
+        if (groupOption == AlignmentTrack.GroupOption.BASE_AT_POS) {
+            if (tagArg == null) {
+                return "Error: position is required";
+            } else {
+                try {
+                    Locus locus = Locus.fromString(tagArg);
+                    r = new Range(locus.getChr(), locus.getStart(), locus.getEnd());
+                } catch (Exception e) {
+                    return "Error: invalid position: " + tagArg;
+                }
+            }
+        }
+
+        igv.groupAlignmentTracks(groupOption, tagArg, r);
+        igv.doRefresh();
+        return "OK";
     }
 
 
@@ -921,6 +945,8 @@ public class CommandExecutor {
             return AlignmentTrack.SortOption.MATE_CHR;
         } else if (str.equalsIgnoreCase("readOrder")) {
             return AlignmentTrack.SortOption.READ_ORDER;
+        } else if (str.equalsIgnoreCase("readname")) {
+            return AlignmentTrack.SortOption.READ_NAME;
         } else {
             try {
                 return AlignmentTrack.SortOption.valueOf(str.toUpperCase());

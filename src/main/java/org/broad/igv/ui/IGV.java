@@ -51,7 +51,7 @@ import org.broad.igv.feature.genome.*;
 import org.broad.igv.google.OAuthUtils;
 import org.broad.igv.lists.GeneList;
 import org.broad.igv.prefs.IGVPreferences;
-import org.broad.igv.prefs.PreferenceEditorNew;
+import org.broad.igv.prefs.PreferencesEditor;
 import org.broad.igv.prefs.PreferencesManager;
 import org.broad.igv.sam.AlignmentTrack;
 import org.broad.igv.sam.InsertionSelectionEvent;
@@ -79,6 +79,7 @@ import java.util.List;
 import java.util.*;
 import java.util.concurrent.Future;
 import java.util.prefs.Preferences;
+import java.util.stream.Collectors;
 
 import static org.broad.igv.prefs.Constants.*;
 
@@ -598,7 +599,7 @@ public class IGV implements IGVEventObserver {
 
     final public void doViewPreferences() {
         try {
-            PreferenceEditorNew.open(this.mainFrame);
+            PreferencesEditor.open(this.mainFrame);
         } catch (Exception e) {
             log.error("Error openining preference dialog", e);
         }
@@ -719,7 +720,7 @@ public class IGV implements IGVEventObserver {
      *                       the {@link Paintable} interface for this to work
      * @throws IOException
      * @api
-     * @see SnapshotFileChooser.SnapshotFileType
+     * @see ImageFileTypes.Type
      */
     public String createSnapshotNonInteractive(Component target, File file, boolean paintOffscreen) throws Exception {
 
@@ -732,16 +733,16 @@ public class IGV implements IGVEventObserver {
             file = new File(file.getAbsolutePath() + extension);
         }
 
-        SnapshotFileChooser.SnapshotFileType type = SnapshotFileChooser.getSnapshotFileType(extension);
+        ImageFileTypes.Type type = ImageFileTypes.getImageFileType(extension);
 
         String message;
         Exception exc = null;
 
-        if (type == SnapshotFileChooser.SnapshotFileType.NULL) {
+        if (type == ImageFileTypes.Type.NULL) {
             message = "ERROR: Unknown file extension " + extension;
             log.error(message);
             return message;
-        } else if (type == SnapshotFileChooser.SnapshotFileType.EPS && !SnapshotUtilities.canExportScreenshotEps()) {
+        } else if (type == ImageFileTypes.Type.EPS && !SnapshotUtilities.canExportScreenshotEps()) {
             message = "ERROR: EPS output requires EPSGraphics library. See https://www.broadinstitute.org/software/igv/third_party_tools#epsgraphics";
             log.error(message);
             return message;
@@ -768,20 +769,26 @@ public class IGV implements IGVEventObserver {
 
         File snapshotDirectory = PreferencesManager.getPreferences().getLastSnapshotDirectory();
 
-        JFileChooser fc = new SnapshotFileChooser(snapshotDirectory, defaultFile);
-        fc.showSaveDialog(mainFrame);
-        File file = fc.getSelectedFile();
-
+        // JFileChooser fc = new SnapshotFileChooser(snapshotDirectory, defaultFile);
+        FileDialog fc = new FileDialog(mainFrame, "Save image", FileDialog.SAVE);
+        if (snapshotDirectory != null) {
+            fc.setDirectory(snapshotDirectory.getAbsolutePath());
+        }
+        fc.setFile(defaultFile.getName());
+        fc.setFilenameFilter((dir, name) ->
+                name.endsWith(".jpeg") || name.endsWith(".jpg") || name.endsWith(".png") || name.endsWith(".svg"));
+        fc.setVisible(true);
+        String file = fc.getFile();
         // If a file selection was made
         if (file != null) {
-            File directory = file.getParentFile();
+            String directory = fc.getDirectory();
             if (directory != null) {
                 PreferencesManager.getPreferences().setLastSnapshotDirectory(directory);
             }
-
+            return new File(directory, file);
+        } else {
+            return null;
         }
-
-        return file;
     }
 
 
@@ -945,6 +952,8 @@ public class IGV implements IGVEventObserver {
     public void newSession() {
         resetSession(null);
         setGenomeTracks(GenomeManager.getInstance().getCurrentGenome().getGeneTrack());
+        this.menuBar.disableReloadSession();
+        this.doRefresh();
     }
 
     /**
@@ -1095,18 +1104,7 @@ public class IGV implements IGVEventObserver {
                                  final String locus,
                                  final boolean merge) {
 
-        // check to see if any files in session file are on protected (oauth) server. If
-        // so, make sure user is logged into
-        // server before -proceeding
-
-        OAuthUtils.getInstance().getProvider().checkServerLogin(sessionPath);
-
-
-        Runnable runnable = new Runnable() {
-            public void run() {
-                restoreSessionSynchronous(sessionPath, locus, merge);
-            }
-        };
+        Runnable runnable = () -> restoreSessionSynchronous(sessionPath, locus, merge);
         LongRunningTask.submit(runnable);
     }
 
@@ -1119,52 +1117,26 @@ public class IGV implements IGVEventObserver {
      * @return true if successful
      */
     public boolean restoreSessionSynchronous(String sessionPath, String locus, boolean merge) {
+
         InputStream inputStream = null;
         try {
+            try {
+                inputStream = new BufferedInputStream(ParsingUtils.openInputStreamGZ(new ResourceLocator(sessionPath)));
+            } catch (IOException e) {
+                log.error("Error loading session", e);
+                MessageUtils.showMessage("Error loading session: " + sessionPath);
+                return false;
+            }
+
             if (!merge) {
                 // Do this first, it closes all open SeekableFileStreams.
                 resetSession(sessionPath);
             }
 
             setStatusBarMessage("Opening session...");
-            inputStream = new BufferedInputStream(ParsingUtils.openInputStreamGZ(new ResourceLocator(sessionPath)));
-
-            boolean isUCSC = sessionPath.endsWith(".session") || sessionPath.endsWith(".session.txt");
-            boolean isIndexAware = sessionPath.endsWith(".idxsession") || sessionPath.endsWith(".idxsession.txt");
-            final SessionReader sessionReader = isUCSC ?
-                    new UCSCSessionReader(this) :
-                    (isIndexAware ? new IndexAwareSessionReader(this) : new IGVSessionReader(this));
-
-            sessionReader.loadSession(inputStream, session, sessionPath);
-
-            String searchText = locus == null ? session.getLocus() : locus;
-
-            // NOTE: Nothing to do if chr == all
-            if (!FrameManager.isGeneListMode() && searchText != null &&
-                    !searchText.equals(Globals.CHR_ALL) && searchText.trim().length() > 0) {
-                goToLocus(searchText);
-            }
 
 
-            mainFrame.setTitle(UIConstants.APPLICATION_NAME + " - Session: " + sessionPath);
-            System.gc();
-
-
-            double[] dividerFractions = session.getDividerFractions();
-            if (dividerFractions != null) {
-                contentPane.getMainPanel().setDividerFractions(dividerFractions);
-            }
-            session.clearDividerLocations();
-
-            //If there's a RegionNavigatorDialog, kill it.
-            //this could be done through the Observer that RND uses, I suppose.  Not sure that's cleaner
-            RegionNavigatorDialog.destroyInstance();
-
-            if (!getRecentSessionList().contains(sessionPath)) {
-                getRecentSessionList().addFirst(sessionPath);
-            }
-            doRefresh();
-            return true;
+            return restoreSessionFromStream(sessionPath, locus, inputStream);
 
         } catch (Exception e) {
             String message = "Error loading session session : <br>&nbsp;&nbsp;" + sessionPath + "<br>" +
@@ -1181,6 +1153,48 @@ public class IGV implements IGVEventObserver {
                 resetStatusMessage();
             }
         }
+    }
+
+    public boolean restoreSessionFromStream(String sessionPath, String locus, InputStream inputStream) throws IOException {
+        boolean isUCSC = sessionPath != null && (sessionPath.endsWith(".session") || sessionPath.endsWith(".session.txt"));
+        boolean isIndexAware = sessionPath != null && (sessionPath.endsWith(".idxsession") || sessionPath.endsWith(".idxsession.txt"));
+        final SessionReader sessionReader = isUCSC ?
+                new UCSCSessionReader(this) :
+                (isIndexAware ? new IndexAwareSessionReader(this) : new IGVSessionReader(this));
+
+        sessionReader.loadSession(inputStream, session, sessionPath);
+
+        String searchText = locus == null ? session.getLocus() : locus;
+
+        // NOTE: Nothing to do if chr == all
+        if (!FrameManager.isGeneListMode() && searchText != null &&
+                !searchText.equals(Globals.CHR_ALL) && searchText.trim().length() > 0) {
+            goToLocus(searchText);
+        }
+
+
+        System.gc();
+
+        double[] dividerFractions = session.getDividerFractions();
+        if (dividerFractions != null) {
+            contentPane.getMainPanel().setDividerFractions(dividerFractions);
+        }
+        session.clearDividerLocations();
+
+        //If there's a RegionNavigatorDialog, kill it.
+        //this could be done through the Observer that RND uses, I suppose.  Not sure that's cleaner
+        RegionNavigatorDialog.destroyInstance();
+
+        if (sessionPath != null) {
+            mainFrame.setTitle(UIConstants.APPLICATION_NAME + " - Session: " + sessionPath);
+            if (!getRecentSessionList().contains(sessionPath)) {
+                getRecentSessionList().addFirst(sessionPath);
+            }
+            this.menuBar.enableReloadSession();
+        }
+
+        doRefresh();
+        return true;
     }
 
 
@@ -1578,13 +1592,20 @@ public class IGV implements IGVEventObserver {
      */
     public void groupAlignmentTracks(AlignmentTrack.GroupOption option, String tag, Range pos) {
         final IGVPreferences prefMgr = PreferencesManager.getPreferences();
-        prefMgr.put(SAM_GROUP_OPTION, option.toString());
-        if (option == AlignmentTrack.GroupOption.TAG && tag != null) {
-            prefMgr.put(SAM_GROUP_BY_TAG, tag);
+
+        // Don't persist "group by position"
+        if (option != AlignmentTrack.GroupOption.BASE_AT_POS) {
+            if (option == AlignmentTrack.GroupOption.NONE) {
+                prefMgr.remove(SAM_GROUP_OPTION);
+                prefMgr.remove(SAM_GROUP_BY_POS);
+            } else {
+                prefMgr.put(SAM_GROUP_OPTION, option.toString());
+                if (option == AlignmentTrack.GroupOption.TAG && tag != null) {
+                    prefMgr.put(SAM_GROUP_BY_TAG, tag);
+                }
+            }
         }
-        if (option == AlignmentTrack.GroupOption.BASE_AT_POS && pos != null) {
-            prefMgr.put(SAM_GROUP_BY_POS, pos.getChr() + " " + String.valueOf(pos.getStart()));
-        }
+
         for (Track t : getAllTracks()) {
             if (t instanceof AlignmentTrack) {
                 ((AlignmentTrack) t).groupAlignments(option, tag, pos);
@@ -1607,7 +1628,6 @@ public class IGV implements IGVEventObserver {
                 t.setDisplayMode(mode);
             }
         }
-
     }
 
 
@@ -2053,7 +2073,6 @@ public class IGV implements IGVEventObserver {
 
         @Override
         public void run() {
-
             final boolean runningBatch = igvArgs.getBatchFile() != null;
             BatchRunner.setIsBatchMode(runningBatch);
 
@@ -2076,7 +2095,6 @@ public class IGV implements IGVEventObserver {
                     log.error("Error loading genome: " + genomeId, e);
                 }
             }
-
 
             if (genomeLoaded == false && igvArgs.getSessionFile() == null) {
                 String genomeId = preferenceManager.getDefaultGenome();
@@ -2137,6 +2155,12 @@ public class IGV implements IGVEventObserver {
                     // Not an xml file, assume its a list of data files
                     List<String> dataFiles = igvArgs.getDataFileStrings();
 
+                    Collection<String> h = igvArgs.getHttpHeader();
+                    log.info("h= " + igvArgs.getHttpHeader());
+                    if (h != null && !h.isEmpty()) {
+                        HttpUtils.getInstance().addHeaders(h, dataFiles);
+                    }
+
                     String[] names = null;
                     if (igvArgs.getName() != null) {
                         names = igvArgs.getName().split(",");
@@ -2150,15 +2174,12 @@ public class IGV implements IGVEventObserver {
                         coverageFiles = igvArgs.getCoverageFile().split(",");
                     }
 
-
                     List<ResourceLocator> locators = new ArrayList();
-
-
                     for (int i = 0; i < dataFiles.size(); i++) {
 
                         String p = dataFiles.get(i).trim();
 
-                        // Decode local file paths
+                        // Decode local file urls??? I don't understand this extra decoding
                         if (URLUtils.isURL(p) && !FileUtils.isRemote(p)) {
                             p = StringUtils.decodeURL(p);
                         }
@@ -2174,7 +2195,7 @@ public class IGV implements IGVEventObserver {
                         if (indexFiles != null && i < indexFiles.length) {
                             String idxP = indexFiles[i];
                             if (URLUtils.isURL(idxP) && !FileUtils.isRemote(idxP)) {
-                                idxP = StringUtils.decodeURL(idxP);
+                                idxP = StringUtils.decodeURL(idxP);       // ???
                             }
                             if (idxP.length() > 0) {
                                 rl.setIndexPath(idxP);
@@ -2185,7 +2206,7 @@ public class IGV implements IGVEventObserver {
                         if (coverageFiles != null && i < coverageFiles.length) {
                             String covP = coverageFiles[i];
                             if (URLUtils.isURL(covP) && !FileUtils.isRemote(covP)) {
-                                covP = StringUtils.decodeURL(covP);
+                                covP = StringUtils.decodeURL(covP);       // ???
                             }
                             if (covP.length() > 0) {
                                 rl.setCoverage(covP);
@@ -2325,7 +2346,6 @@ public class IGV implements IGVEventObserver {
         for (TrackPanel tp : getTrackPanels()) {
             tp.createDataPanels();
         }
-
         contentPane.getCommandBar().setGeneListMode(FrameManager.isGeneListMode());
         contentPane.getMainPanel().applicationHeaderPanel.revalidate();
         contentPane.getMainPanel().validate();
@@ -2333,9 +2353,15 @@ public class IGV implements IGVEventObserver {
     }
 
     final public void doRefresh() {
-        contentPane.getMainPanel().revalidate();
-        mainFrame.repaint();
-        getContentPane().repaint();
+        UIUtilities.invokeOnEventThread(() -> {
+            if (Globals.isBatch()) {
+                contentPane.getMainPanel().validate();
+                contentPane.paintImmediately(contentPane.getBounds());
+            } else {
+                contentPane.getMainPanel().revalidate();
+                mainFrame.repaint();
+            }
+        });
     }
 
     /**
@@ -2350,7 +2376,7 @@ public class IGV implements IGVEventObserver {
         UIUtilities.invokeOnEventThread(() -> {
 
             if (Globals.isBatch()) {
-                contentPane.revalidateTrackPanels();
+                contentPane.validateTrackPanels();
                 rootPane.paintImmediately(rootPane.getBounds());
             } else {
                 contentPane.revalidateTrackPanels();
@@ -2365,4 +2391,26 @@ public class IGV implements IGVEventObserver {
             tp.getScrollPane().getNamePanel().repaint();
         }
     }
+
+    public void preloadAllTracks() {
+        for (TrackPanel tp : getTrackPanels()) {
+            for (ReferenceFrame frame : FrameManager.getFrames()) {
+                Collection<Track> trackList = visibleTracks(tp.getDataPanelContainer());
+                for (Track track : trackList) {
+                    if (track.isReadyToPaint(frame) == false) {
+                        track.load(frame);
+                    }
+                }
+            }
+        }
+    }
+
+
+    public List<Track> visibleTracks(DataPanelContainer dataPanelContainer) {
+        return dataPanelContainer.getTrackGroups().stream().
+                filter(TrackGroup::isVisible).
+                flatMap(trackGroup -> trackGroup.getVisibleTracks().stream()).
+                collect(Collectors.toList());
+    }
+
 }

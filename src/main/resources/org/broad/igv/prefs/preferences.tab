@@ -32,7 +32,7 @@ AF_VAR.COLOR	Allel freq - variant	color	255,0,0
 VARIANT_COLOR_BY_ALLELE_FREQ	Color by allele frequency (uncheck to color by allele fraction)	boolean	TRUE
 
 #Mutations
-
+info	Settings on this tab apply to TCGA  "maf" and "mut" files.
 ##Color Options
 COVER_OVERLAY_KEY	Color Mutations	boolean	TRUE
 MUTATION_INDEL_COLOR_KEY	Indel	color	0,200,0
@@ -44,8 +44,11 @@ MUTATION_TARGETED_REGION_COLOR_KEY	Targeted Region	color	236,155,43
 MUTATION_Truncating_COLOR	Truncating	color	150,0,0
 MUTATION_Non-coding_Transcript_COLOR	Non-coding Transcript	color	0,0,150
 MUTATION_Other_AA_changing_COLOR	Other AA Changing	color	0,150,150
-MUTATION_Other_likely_neutral_COLOR	Other Likely Neutralcolor	225,180,225
+MUTATION_Other_likely_neutral_COLOR	Other Likely Neutral	color	225,180,225
 MUTATION_UNKNOWN_COLOR_KEY	Unknown	color	0,180,225
+
+##Other
+OVERLAY_ATTRIBUTE_KEY	Linking ID	string	LINKING_ID
 
 
 #Charts
@@ -105,9 +108,12 @@ SAM.FILTER_FAILED_READS	Filter vendor failed reads	boolean	TRUE
 SAM.FILTER_SECONDARY_ALIGNMENTS	Filter secondary alignments	boolean	FALSE
 SAM.FILTER_SUPPLEMENTARY_ALIGNMENTS	Filter supplementary alignments	boolean	FALSE
 SAM.FLAG_UNMAPPED_PAIR	Flag unmapped pairs	boolean	FALSE
-SAM.SHOW_SOFT_CLIPPED	Show soft-clipped bases	boolean	FALSE
+
 SAM.SHOW_CENTER_LINE	Show center line	boolean	FALSE
 SAM.HIDDEN_TAGS	Hidden SAM tags	string	SA,MD,XA,RG
+---
+SAM.SHOW_SOFT_CLIPPED	Show soft-clipped bases	boolean	FALSE
+SAM.MAX_SOFT_CLIP	Maximum soft clip size (reference sequence is extended by this amount)	integer	1000
 ---
 SAM.FILTER_ALIGNMENTS	Filter alignments by read group	boolean	FALSE
 SAM.FILTER_URL	URL or path to read group filter file	string	null
@@ -202,7 +208,6 @@ SAM.COLOR_BY	UNEXPECTED_PAIR
 SAM.AUTOSORT	FALSE
 SAM.SHADE_CENTER	TRUE
 SAM.SHOW_REF_SEQ	FALSE
-SAM.SHADE_BASE_QUALITY	QUALITY
 
 SAM.BISULFITE_CONTEXT	CG
 SAM.FLAG_ZERO_QUALITY	TRUE
@@ -271,7 +276,7 @@ CBIO_AMPLIFICATION_THRESHOLD	0.9
 CBIO_DELETION_THRESHOLD	0.9
 CBIO_EXPRESSION_UP_THRESHOLD	1
 CBIO_EXPRESSION_DOWN_THRESHOLD	1
-DETAILS_BEHAVIOR	HOVER
+DETAILS_BEHAVIOR	CLICK
 SHOW_SIZE_WARNING	TRUE
 SKIP_VERSION
 COLOR.A	0,150,0

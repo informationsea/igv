@@ -78,8 +78,8 @@ import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Rectangle2D;
 import java.text.NumberFormat;
-import java.util.*;
 import java.util.List;
+import java.util.*;
 
 import static org.broad.igv.prefs.Constants.*;
 
@@ -145,7 +145,7 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
 
     public enum SortOption {
         START, STRAND, NUCLEOTIDE, QUALITY, SAMPLE, READ_GROUP, INSERT_SIZE, FIRST_OF_PAIR_STRAND, MATE_CHR, TAG,
-        SUPPLEMENTARY, NONE, HAPLOTYPE, READ_ORDER;
+        SUPPLEMENTARY, NONE, HAPLOTYPE, READ_ORDER, READ_NAME;
     }
 
     public enum GroupOption {
@@ -249,7 +249,7 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
             }
             insertionIntervalsMap = newMap;
 
-        }  else if (event instanceof AlignmentTrackEvent) {
+        } else if (event instanceof AlignmentTrackEvent) {
             AlignmentTrackEvent e = (AlignmentTrackEvent) event;
             AlignmentTrackEvent.Type eventType = e.getType();
             switch (eventType) {
@@ -269,9 +269,9 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
 
     void setExperimentType(ExperimentType type) {
 
-            if (type == experimentType) {
-                return;
-            }
+        if (type == experimentType) {
+            return;
+        }
         if (type != experimentType) {
 
             experimentType = type;
@@ -1720,7 +1720,7 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
             group.add(tagOption);
 
             Range oldGroupByPos = renderOptions.getGroupByPos();
-            if (renderOptions.getGroupByOption() == GroupOption.BASE_AT_POS) { // already sorted by the base at a position
+            if (oldGroupByPos != null && renderOptions.getGroupByOption() == GroupOption.BASE_AT_POS) { // already sorted by the base at a position
                 JCheckBoxMenuItem oldGroupByPosOption = new JCheckBoxMenuItem("base at " + oldGroupByPos.getChr() +
                         ":" + Globals.DECIMAL_FORMAT.format(1 + oldGroupByPos.getStart()));
                 groupMenu.add(oldGroupByPosOption);
@@ -1782,6 +1782,7 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
             mappings.put("sample", SortOption.SAMPLE);
             mappings.put("read group", SortOption.READ_GROUP);
             mappings.put("read order", SortOption.READ_ORDER);
+            mappings.put("read name", SortOption.READ_NAME);
 
             if (dataManager.isPairedEnd()) {
                 mappings.put("insert size", SortOption.INSERT_SIZE);
@@ -2820,12 +2821,10 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
             DefaultValues(IGVPreferences prefs) {
 
                 String shadeOptionString = prefs.get(SAM_SHADE_BASES);
-                if (shadeOptionString.equals("false")) {
+                if (shadeOptionString.toLowerCase().equals("false")) {
                     shadeBasesOption = AlignmentTrack.ShadeBasesOption.NONE;
-                } else if (shadeOptionString.equals("true")) {
-                    shadeBasesOption = AlignmentTrack.ShadeBasesOption.QUALITY;
                 } else {
-                    shadeBasesOption = AlignmentTrack.ShadeBasesOption.valueOf(shadeOptionString);
+                    shadeBasesOption = AlignmentTrack.ShadeBasesOption.QUALITY;
                 }
                 shadeCenters = prefs.getAsBoolean(SAM_SHADE_CENTER);
                 flagUnmappedPairs = prefs.getAsBoolean(SAM_FLAG_UNMAPPED_PAIR);

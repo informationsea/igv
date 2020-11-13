@@ -32,21 +32,9 @@ package org.broad.igv.ui.action;
 //~--- non-JDK imports --------------------------------------------------------
 
 import org.apache.log4j.Logger;
-import org.broad.igv.prefs.PreferencesManager;
-import org.broad.igv.session.IGVSessionReader;
-import org.broad.igv.session.Session;
-import org.broad.igv.session.SessionWriter;
 import org.broad.igv.ui.IGV;
-import org.broad.igv.ui.UIConstants;
-import org.broad.igv.ui.WaitCursorManager;
-import org.broad.igv.ui.util.FileDialogUtils;
 
-import javax.swing.*;
 import java.awt.event.ActionEvent;
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
 
 /**
  * @author jrobinso
@@ -57,8 +45,6 @@ public class ReloadSessionMenuAction extends MenuAction {
     IGV igv;
 
     /**
-     *
-     *
      * @param label
      * @param mnemonic
      * @param igv
@@ -75,17 +61,10 @@ public class ReloadSessionMenuAction extends MenuAction {
      */
     @Override
     public void actionPerformed(ActionEvent e) {
-
         String currentSessionFilePath = igv.getSession().getPath();
-        Session currentSession = igv.getSession();
-        currentSession.setPath(currentSessionFilePath);
-        String xml = (new SessionWriter()).createXmlFromSession(currentSession, null);
-
-        this.igv.resetSession(currentSessionFilePath);
-        IGVSessionReader sessionReader = new IGVSessionReader(this.igv);
-        InputStream inputStream = new ByteArrayInputStream(xml.getBytes());
-        sessionReader.loadSession(inputStream, currentSession, currentSessionFilePath);
-        this.igv.doRefresh();
+        if (currentSessionFilePath != null) {
+            this.igv.restoreSessionSynchronous(currentSessionFilePath, null, false);
+        }
     }
 
 
