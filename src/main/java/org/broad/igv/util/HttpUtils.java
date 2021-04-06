@@ -35,15 +35,12 @@ import org.broad.igv.Globals;
 import org.broad.igv.exceptions.HttpResponseException;
 import org.broad.igv.google.GoogleUtils;
 import org.broad.igv.google.OAuthUtils;
-import org.broad.igv.gs.GSUtils;
 import org.broad.igv.prefs.IGVPreferences;
 import org.broad.igv.prefs.PreferencesManager;
 import org.broad.igv.ui.IGV;
 import org.broad.igv.ui.util.MessageUtils;
 import org.broad.igv.util.collections.CI;
 import org.broad.igv.util.ftp.FTPUtils;
-import org.broad.igv.util.stream.IGVUrlHelper;
-import org.broad.igv.util.stream.IGVUrlHelperFactory;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
@@ -57,9 +54,10 @@ import java.io.*;
 import java.net.*;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
-import java.util.*;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.List;
-import java.util.regex.Pattern;
+import java.util.*;
 import java.util.zip.GZIPInputStream;
 
 import static org.broad.igv.prefs.Constants.*;
@@ -85,9 +83,20 @@ public class HttpUtils {
     private String defaultUserName = null;
     private char[] defaultPassword = null;
 
+    private Map<String, Collection<String>> headerMap = new HashMap<>();
+
     // static provided to support unit testing
     private static boolean BYTE_RANGE_DISABLED = false;
     private Map<URL, Boolean> headURLCache = new HashMap<URL, Boolean>();
+
+    private class CachedRedirect {
+        private URL url = null;
+        private ZonedDateTime expires = null;
+    }
+
+    // remember HTTP redirects
+    private final int DEFAULT_REDIRECT_EXPIRATION_MIN = 15;
+    private Map<URL, CachedRedirect> redirectCache = new HashMap<URL, CachedRedirect>();
 
     /**
      * @return the single instance
@@ -101,10 +110,7 @@ public class HttpUtils {
 
     private HttpUtils() {
 
-        // if (!Globals.checkJavaVersion("1.8")) {
         disableCertificateValidation();
-        // }
-        CookieHandler.setDefault(new IGVCookieManager());
         Authenticator.setDefault(new IGVAuthenticator());
 
         try {
@@ -149,17 +155,18 @@ public class HttpUtils {
             }
         }
 
-        String host = URLUtils.getHost(urlString);  
+        String host = URLUtils.getHost(urlString);
         if (host.equals("igv.broadinstitute.org")) {
             urlString = urlString.replace("igv.broadinstitute.org", "s3.amazonaws.com/igv.broadinstitute.org");
         } else if (host.equals("igvdata.broadinstitute.org")) {
-            // Cloudfront server
-            urlString = urlString.replace("igvdata.broadinstitute.org", "dn7ywbm9isq8j.cloudfront.net");
+            urlString = urlString.replace("igvdata.broadinstitute.org", "s3.amazonaws.com/igv.broadinstitute.org");
+        } else if (host.equals("dn7ywbm9isq8j.cloudfront.net")) {
+            urlString = urlString.replace("dn7ywbm9isq8j.cloudfront.net", "s3.amazonaws.com/igv.broadinstitute.org");
         } else if (host.equals("www.broadinstitute.org")) {
             urlString = urlString.replace("www.broadinstitute.org/igvdata", "data.broadinstitute.org/igvdata");
-        } else if(host.equals("www.dropbox.com")) {
+        } else if (host.equals("www.dropbox.com")) {
             urlString = urlString.replace("//www.dropbox.com", "//dl.dropboxusercontent.com");
-        } else if(host.equals("drive.google.com")) {
+        } else if (host.equals("drive.google.com")) {
             urlString = GoogleUtils.driveDownloadURL(urlString);
         }
 
@@ -256,7 +263,7 @@ public class HttpUtils {
         }
         byte[] postDataBytes = postData.toString().getBytes();
 
-        log.debug("Raw POST request: "+postData.toString());
+        log.debug("Raw POST request: " + postData.toString());
 
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("POST");
@@ -302,6 +309,7 @@ public class HttpUtils {
     public InputStream openConnectionStream(URL url, Map<String, String> requestProperties) throws IOException {
 
         HttpURLConnection conn = openConnection(url, requestProperties);
+
         if (conn == null) {
             return null;
         }
@@ -347,7 +355,7 @@ public class HttpUtils {
                     }
                 return false;
             } finally {
-                if(conn != null) {
+                if (conn != null) {
                     try {
                         conn.disconnect();
                     } catch (Exception e) {
@@ -383,7 +391,7 @@ public class HttpUtils {
                     throw e;
                 }
                 log.debug("HEAD request failed for url: " + url.toExternalForm());
-                log.debug("Trying GET instead for url: "+ url.toExternalForm());
+                log.debug("Trying GET instead for url: " + url.toExternalForm());
                 headURLCache.put(url, false);
             }
         }
@@ -563,76 +571,6 @@ public class HttpUtils {
     }
 
 
-    public void uploadGenomeSpaceFile(String uri, File file, Map<String, String> headers) throws IOException {
-
-        HttpURLConnection urlconnection = null;
-        OutputStream bos = null;
-
-        URL url = HttpUtils.createURL(uri);
-        urlconnection = openConnection(url, headers, "PUT");
-        urlconnection.setDoOutput(true);
-        urlconnection.setDoInput(true);
-
-        bos = new BufferedOutputStream(urlconnection.getOutputStream());
-        BufferedInputStream bis = new BufferedInputStream(new FileInputStream(file));
-        int i;
-        // read byte by byte until end of stream
-        while ((i = bis.read()) > 0) {
-            bos.write(i);
-        }
-        bos.close();
-        int responseCode = urlconnection.getResponseCode();
-
-        // Error messages below.
-        if (responseCode >= 400) {
-            String message = readErrorStream(urlconnection);
-            throw new IOException("Error uploading " + file.getName() + " : " + message);
-        }
-    }
-
-
-    public String createGenomeSpaceDirectory(URL url, String body) throws IOException {
-
-        HttpURLConnection urlconnection = null;
-        OutputStream bos = null;
-
-        Map<String, String> headers = new HashMap<String, String>();
-        headers.put("Content-Type", "application/json");
-        headers.put("Content-Length", String.valueOf(body.getBytes().length));
-
-        urlconnection = openConnection(url, headers, "PUT");
-        urlconnection.setDoOutput(true);
-        urlconnection.setDoInput(true);
-
-        bos = new BufferedOutputStream(urlconnection.getOutputStream());
-        bos.write(body.getBytes());
-        bos.close();
-        int responseCode = urlconnection.getResponseCode();
-
-        // Error messages below.
-        StringBuffer buf = new StringBuffer();
-        InputStream inputStream;
-
-        if (responseCode >= 200 && responseCode < 300) {
-            inputStream = urlconnection.getInputStream();
-        } else {
-            inputStream = urlconnection.getErrorStream();
-        }
-        BufferedReader br = new BufferedReader(new InputStreamReader(inputStream));
-        String nextLine;
-        while ((nextLine = br.readLine()) != null) {
-            buf.append(nextLine);
-            buf.append('\n');
-        }
-        inputStream.close();
-
-        if (responseCode >= 200 && responseCode < 300) {
-            return buf.toString();
-        } else {
-            throw new IOException("Error creating GS directory: " + buf.toString());
-        }
-    }
-
     /**
      * Code for disabling SSL certification
      */
@@ -711,6 +649,19 @@ public class HttpUtils {
 
             URL url, Map<String, String> requestProperties, String method, int redirectCount, int retries) throws IOException {
 
+        // if we're already seen a redirect for this URL, use the updated one
+        if (redirectCache.containsKey(url)) {
+            CachedRedirect cr = redirectCache.get(url);
+            if (ZonedDateTime.now().compareTo(cr.expires) < 0.0) {
+                // now() is before our expiration
+                log.debug("Found URL in redirection cache: " + url + " ->" + redirectCache.get(url).url);
+                url = cr.url;
+            } else {
+                log.debug("Removing expired URL from redirection cache: " + url);
+                redirectCache.remove(url);
+            }
+        }
+
         // if the url points to a openid location instead of a oauth2.0 location, used the fina and replace
         // string to dynamically map url - dwm08
         if (url.getHost().equals(GoogleUtils.GOOGLE_API_HOST) && OAuthUtils.findString != null && OAuthUtils.replaceString != null) {
@@ -724,10 +675,17 @@ public class HttpUtils {
         }
 
         //Encode base portions. Right now just spaces, most common case
-        //TODO This is a hack and doesn't work for all characters which need it
         if (StringUtils.countChar(url.toExternalForm(), ' ') > 0) {
             String newPath = url.toExternalForm().replaceAll(" ", "%20");
             url = HttpUtils.createURL(newPath);
+        }
+
+        // If this is a Google URL and we have set a userProject ("requestor pays') use it.
+        if (GoogleUtils.isGoogleURL(url.toExternalForm()) &&
+                GoogleUtils.getProjectID() != null &&
+                GoogleUtils.getProjectID().length() > 0 &&
+                !hasQueryParameter(url, "userProject")) {
+            url = addQueryParameter(url, "userProject", GoogleUtils.getProjectID());
         }
 
         Proxy sysProxy = null;
@@ -774,38 +732,47 @@ public class HttpUtils {
             if (PreferencesManager.getPreferences().getAsBoolean("DEBUG.PROXY")) {
                 log.info("PROXY NOT USED ");
                 if (proxySettings.getWhitelist().contains(url.getHost())) {
-                    log.info(url.getHost() + " is whitelisted");
-                };
+                    //log.info(url.getHost() + " is whitelisted");
+                }
             }
             conn = (HttpURLConnection) url.openConnection();
         }
 
-        if (GSUtils.isGenomeSpace(url)) {
-            conn.setRequestProperty("Accept", "application/json,text/plain");
-        } else {
-            if (!"HEAD".equals(method))
-                conn.setRequestProperty("Accept", "text/plain");
+
+        if (!"HEAD".equals(method)) {
+            conn.setRequestProperty("Accept", "text/plain");
         }
 
         conn.setConnectTimeout(Globals.CONNECT_TIMEOUT);
         conn.setReadTimeout(Globals.READ_TIMEOUT);
         conn.setRequestMethod(method);
         conn.setRequestProperty("Connection", "Keep-Alive");
+        // we'll handle redirects manually, allowing us to cache the new URL
+        conn.setInstanceFollowRedirects(false);
+
         if (requestProperties != null) {
             for (Map.Entry<String, String> prop : requestProperties.entrySet()) {
                 conn.setRequestProperty(prop.getKey(), prop.getValue());
             }
         }
+
+        Collection<String> headers = headerMap.get(url.getHost());
+        if (headers != null) {
+            for (String h : headers) {
+                String[] kv = h.split(":");
+                if (kv.length == 2) {
+                    conn.setRequestProperty(kv[0], kv[1]);
+                }
+            }
+        }
+
         conn.setRequestProperty("User-Agent", Globals.applicationString());
 
         // If this is a Google URL and we have an access token use it.
         if (GoogleUtils.isGoogleURL(url.toExternalForm())) {
             String token = OAuthUtils.getInstance().getProvider().getAccessToken();
-            if (token != null)  {
+            if (token != null) {
                 conn.setRequestProperty("Authorization", "Bearer " + token);
-            }
-            if(GoogleUtils.getProjectID() != null && GoogleUtils.getProjectID().length() > 0) {
-                url = addQueryParameter(url, "userProject", GoogleUtils.getProjectID());
             }
         }
 
@@ -841,9 +808,43 @@ public class HttpUtils {
                 if (redirectCount > MAX_REDIRECTS) {
                     throw new IOException("Too many redirects");
                 }
-                String newLocation = conn.getHeaderField("Location");
-                log.debug("Redirecting to " + newLocation);
-                return openConnection(HttpUtils.createURL(newLocation), requestProperties, method, ++redirectCount, retries);
+
+                CachedRedirect cr = new CachedRedirect();
+                cr.url = new URL(conn.getHeaderField("Location"));
+                if (cr.url != null) {
+                    cr.expires = ZonedDateTime.now().plusMinutes(DEFAULT_REDIRECT_EXPIRATION_MIN);
+                    String s;
+                    if ((s = conn.getHeaderField("Cache-Control")) != null) {
+
+                        // cache-control takes priority
+                        CacheControl cc = null;
+                        try {
+                            cc = CacheControl.valueOf(s);
+                        } catch (IllegalArgumentException e) {
+                            // use default
+                        }
+                        if (cc != null) {
+                            if (cc.isNoCache()) {
+                                // set expires to null, preventing caching
+                                cr.expires = null;
+                            } else if (cc.getMaxAge() > 0) {
+                                cr.expires = ZonedDateTime.now().plusSeconds(cc.getMaxAge());
+                            }
+                        }
+                    } else if ((s = conn.getHeaderField("Expires")) != null) {
+                        // no cache-control header, so try "expires" next
+                        try {
+                            cr.expires = ZonedDateTime.parse(s);
+                        } catch (DateTimeParseException e) {
+                            // use default
+                        }
+                    }
+                    if (cr.expires != null) {
+                        redirectCache.put(url, cr);
+                        log.debug("Redirecting to " + cr.url);
+                        return openConnection(HttpUtils.createURL(cr.url.toString()), requestProperties, method, ++redirectCount, retries);
+                    }
+                }
             }
 
             // TODO -- handle other response codes.
@@ -857,7 +858,7 @@ public class HttpUtils {
                     message = "File not found: " + url.toString();
                     throw new FileNotFoundException(message);
                 } else if (code == 401) {
-                    if(GoogleUtils.isGoogleURL(url.toExternalForm()) && retries == 0) {
+                    if (GoogleUtils.isGoogleURL(url.toExternalForm()) && retries == 0) {
                         GoogleUtils.checkLogin();
                         return openConnection(url, requestProperties, method, redirectCount, ++retries);
                     }
@@ -884,17 +885,27 @@ public class HttpUtils {
     }
 
     private boolean isDropboxHost(String host) {
-        return(host.equals("dl.dropboxusercontent.com") || host.equals("www.dropbox.com"));
+        return (host.equals("dl.dropboxusercontent.com") || host.equals("www.dropbox.com"));
     }
 
-    private URL addQueryParameter(URL url, String userProject, String projectID) {
+    private URL addQueryParameter(URL url, String param, String value) {
         String urlString = url.toExternalForm();
-        urlString = urlString + (urlString.contains("?") ? "&" : "?") + userProject + "=" + projectID;
+        urlString = urlString + (urlString.contains("?") ? "&" : "?") + param + "=" + value;
         try {
             return new URL(urlString);
         } catch (MalformedURLException e) {
             log.error("Error adding query parameter", e);
             return url;
+        }
+    }
+
+    private boolean hasQueryParameter(URL url, String parameter) {
+        String urlstring = url.toExternalForm();
+        if (urlstring.contains("?")) {
+            int idx = urlstring.indexOf('?');
+            return urlstring.substring(idx).contains(parameter + "=");
+        } else {
+            return false;
         }
     }
 
@@ -947,7 +958,7 @@ public class HttpUtils {
                     boolean byteRangeTestSuccess = testByteRange(url);
 
                     if (byteRangeTestSuccess) {
-                        log.info("Range-byte request succeeded");
+                        //log.info("Range-byte request succeeded");
                     } else {
                         log.info("Range-byte test failed -- Host: " + host +
                                 " does not support range-byte requests or there is a problem with client network environment.");
@@ -978,6 +989,38 @@ public class HttpUtils {
         boolean byteRangeTestSuccess = (statusCode == 206);
         readFully(conn.getInputStream(), new byte[10]);
         return byteRangeTestSuccess;
+    }
+
+    /**
+     * Add an http header string to be applied the the specified URLs.  Used to support command line specification
+     * of authentication headers
+     *
+     * @param headers
+     * @param urls
+     */
+    public void addHeaders(Collection<String> headers, List<String> urls) {
+        for (String u : urls) {
+            if (isRemoteURL(u)) {
+                try {
+                    URL url = new URL(mapURL(u));
+                    headerMap.put(url.getHost(), headers);
+                    System.out.println("Added " + url.getHost() + " -> " + headers);
+
+                } catch (MalformedURLException e) {
+                    log.error("Error parsing URL " + u, e);
+                }
+            }
+        }
+    }
+
+
+    private String stripParameters(String url) {
+        int idx = url.indexOf("?");
+        if (idx > 0) {
+            return url.substring(0, idx);
+        } else {
+            return url;
+        }
     }
 
     public void shutdown() {
@@ -1059,13 +1102,7 @@ public class HttpUtils {
 
             Frame owner = IGV.hasInstance() ? IGV.getMainFrame() : null;
 
-            boolean isGenomeSpace = GSUtils.isGenomeSpace(getRequestingURL());
-            if (isGenomeSpace) {
-                // If we are being challenged by GS the token must be bad/expired
-                GSUtils.logout();
-            }
-
-            LoginDialog dlg = new LoginDialog(owner, isGenomeSpace, urlString, isProxyChallenge);
+            LoginDialog dlg = new LoginDialog(owner, urlString, isProxyChallenge);
             dlg.setVisible(true);
             if (dlg.isCanceled()) {
                 return null;
@@ -1130,86 +1167,6 @@ public class HttpUtils {
         }
     }
 
-
-    /**
-     * Extension of CookieManager that grabs cookies from the GenomeSpace identity server to store locally.
-     * This is to support the GenomeSpace "single sign-on". Examples ...
-     * gs-username=igvtest; Domain=.genomespace.org; Expires=Mon, 21-Jul-2031 03:27:23 GMT; Path=/
-     * gs-token=HnR9rBShNO4dTXk8cKXVJT98Oe0jWVY+; Domain=.genomespace.org; Expires=Mon, 21-Jul-2031 03:27:23 GMT; Path=/
-     */
-
-    static class IGVCookieManager extends CookieHandler {
-
-
-        CookieManager wrappedManager;
-
-        public IGVCookieManager() {
-            wrappedManager = new CookieManager();
-        }
-
-        @Override
-        public Map<String, List<String>> get(URI uri, Map<String, List<String>> requestHeaders) throws IOException {
-
-            Map<String, List<String>> headers = new HashMap<String, List<String>>();
-            headers.putAll(wrappedManager.get(uri, requestHeaders));
-
-            if (GSUtils.isGenomeSpace(uri.toURL())) {
-                String token = GSUtils.getGSToken();
-                if (token != null) {
-                    List<String> cookieList = headers.get("Cookie");
-                    boolean needsTokenCookie = true;
-                    boolean needsToolCookie = true;
-                    if (cookieList == null) {
-                        cookieList = new ArrayList<String>(1);
-                        headers.put("Cookie", cookieList);
-                    }
-
-                    for (String cookie : cookieList) {
-                        if (cookie.startsWith("gs-token")) {
-                            needsTokenCookie = false;
-                        } else if (cookie.startsWith("gs-toolname")) {
-                            needsToolCookie = false;
-                        }
-                    }
-                    if (needsTokenCookie) {
-                        cookieList.add("gs-token=" + token);
-                    }
-                    if (needsToolCookie) {
-                        cookieList.add("gs-toolname=IGV");
-                    }
-                }
-            }
-
-            return Collections.unmodifiableMap(headers);
-        }
-
-        @Override
-        public void put(URI uri, Map<String, List<String>> responseHeaders) throws IOException {
-            String urilc = uri.toString().toLowerCase();
-            if (urilc.contains("identity") && urilc.contains("genomespace")) {
-                List<String> cookies = responseHeaders.get("Set-Cookie");
-                if (cookies != null) {
-                    for (String cstring : cookies) {
-                        List<HttpCookie> cookieList = HttpCookie.parse(cstring);
-                        for (HttpCookie cookie : cookieList) {
-                            String cookieName = cookie.getName();
-                            String value = cookie.getValue();
-                            if (cookieName.equals("gs-token")) {
-                                //log.debug("gs-token: " + value);
-                                GSUtils.setGSToken(value);
-                            } else if (cookieName.equals("gs-username")) {
-                                //log.debug("gs-username: " + value);
-                                GSUtils.setGSUser(value);
-                            }
-                        }
-                    }
-                }
-            }
-            wrappedManager.put(uri, responseHeaders);
-        }
-    }
-
-
     public class UnsatisfiableRangeException extends RuntimeException {
 
         String message;
@@ -1217,6 +1174,38 @@ public class HttpUtils {
         public UnsatisfiableRangeException(String message) {
             super(message);
             this.message = message;
+        }
+    }
+
+    static class CacheControl {
+
+        boolean noCache = false;
+        long maxAge = 0;
+
+        static CacheControl valueOf(String s) {
+            CacheControl cc = new CacheControl();
+            String[] tokens = Globals.commaPattern.split(s);
+            for (String t : tokens) {
+                t = t.trim().toLowerCase();
+                if (t.startsWith("no-cache")) {
+                    cc.noCache = true;
+                } else if (t.startsWith("max-age")) {
+                    String[] ma = Globals.equalPattern.split(t);
+                    cc.maxAge = Long.parseLong(ma[1].trim());
+                }
+            }
+            return cc;
+        }
+
+        private CacheControl() {
+        }
+
+        public boolean isNoCache() {
+            return noCache;
+        }
+
+        public long getMaxAge() {
+            return maxAge;
         }
     }
 }

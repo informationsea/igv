@@ -267,8 +267,10 @@ public class DenseAlignmentCounts extends BaseAlignmentCounts {
     public int getQuality(int pos, byte b) {
         int offset = pos - start;
         if (offset < 0 || offset >= posA.length) {
-            log.error("Position out of range: " + pos + " (valid range - " + start + "-" + end);
-            return 0;
+            if (log.isDebugEnabled()) {
+                log.debug("Position out of range: " + pos + " (valid range - " + start + "-" + end);
+            }
+            return 32;
         } else {
             switch (b) {
                 case 'a':
@@ -324,9 +326,7 @@ public class DenseAlignmentCounts extends BaseAlignmentCounts {
         if (bases != null) {
             for (int i = 0; i < bases.length; i++) {
                 int pos = start + i;
-                // NOTE:  the direct access block.qualities is intentional,  profiling reveals this to be a critical bottleneck
-                byte q = ((AlignmentBlockImpl) block).qualities[i];
-                // TODO -- handle "=" in cigar string with no read bases
+                byte q =  block.getQuality (i);
                 byte n = bases[i];
                 incPositionCount(pos, n, q, isNegativeStrand);
             }

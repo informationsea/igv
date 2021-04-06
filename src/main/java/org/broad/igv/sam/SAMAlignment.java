@@ -142,7 +142,7 @@ public abstract class SAMAlignment implements Alignment {
 
     abstract public String getCigarString();
 
-    abstract public int getReadLength();
+    abstract public String getReadLengthString();
 
     abstract public String getReadSequence();
 
@@ -242,7 +242,7 @@ public abstract class SAMAlignment implements Alignment {
 
         if (cigarString.equals("*")) {
             alignmentBlocks = new AlignmentBlockImpl[1];
-            alignmentBlocks[0] = new AlignmentBlockImpl(getStart(), readBases, readBaseQualities);
+            alignmentBlocks[0] = new AlignmentBlockImpl(getStart(), readBases, readBaseQualities, readBases.length, '*');
             return;
         }
 
@@ -321,8 +321,14 @@ public abstract class SAMAlignment implements Alignment {
                 }
                 if (operatorIsMatch(showSoftClipped, op.operator)) {
 
-                    AlignmentBlockImpl block = buildAlignmentBlock(readBases, readBaseQualities,
-                            blockStart, fromIdx, op.nBases, true);
+                    AlignmentBlockImpl block = buildAlignmentBlock(
+                            op.operator,
+                            readBases,
+                            readBaseQualities,
+                            blockStart,
+                            fromIdx,
+                            op.nBases,
+                            true);
 
                     if (op.operator == SOFT_CLIP) {
                         block.setSoftClipped(true);
@@ -359,7 +365,7 @@ public abstract class SAMAlignment implements Alignment {
                     // This gap is between blocks split by insertion.   It is a zero
                     // length gap but must be accounted for.
                     gapTypes[gapIdx++] = ZERO_GAP;
-                    AlignmentBlockImpl block = buildAlignmentBlock(readBases, readBaseQualities,
+                    AlignmentBlockImpl block = buildAlignmentBlock(op.operator, readBases, readBaseQualities,
                             blockStart, fromIdx, op.nBases, false);
                     block.setPadding(padding);
                     insertions[insertionIdx++] = block;
@@ -408,7 +414,7 @@ public abstract class SAMAlignment implements Alignment {
                 int nBases = Integer.parseInt(buffer.toString());
                 buffer.setLength(0);
 
-                 if (prevOp != null && prevOp.operator == op) {
+                if (prevOp != null && prevOp.operator == op) {
                     prevOp.nBases += nBases;
                 } else {
                     prevOp = new CigarOperator(nBases, op);
@@ -422,38 +428,39 @@ public abstract class SAMAlignment implements Alignment {
     }
 
 
+    private static AlignmentBlockImpl buildAlignmentBlock(char operator,
+                                                          byte[] readBases,
+                                                          byte[] readBaseQualities,
+                                                          int blockStart,
+                                                          int fromIdx,
+                                                          int nBases,
+                                                          boolean checkNBasesAvailable) {
 
-    private static AlignmentBlockImpl buildAlignmentBlock(byte[] readBases, byte[] readBaseQualities, int blockStart,
-                                                          int fromIdx, int nBases, boolean checkNBasesAvailable) {
-
-        byte[] blockBases = new byte[nBases];
-        byte[] blockQualities = new byte[nBases];
-
-        // TODO -- represent missing sequence ("*") explicitly for efficiency.
-        int nBasesAvailable = nBases;
-        if (checkNBasesAvailable) {
-            nBasesAvailable = readBases.length - fromIdx;
-        }
-        if (readBases == null || readBases.length == 0) {
-            Arrays.fill(blockBases, (byte) '=');
-        } else if (nBasesAvailable < nBases) {
-            Arrays.fill(blockBases, (byte) '?');
-        } else {
+        byte[] blockBases = null;
+        byte[] blockQualities = null;
+        if (readBases != null && readBases.length > 0) {
+            int nBasesAvailable = nBases;
+            if (checkNBasesAvailable) {
+                nBasesAvailable = readBases.length - fromIdx;
+            }
+            blockBases = new byte[nBases];
+            if (nBasesAvailable < nBases) {
+                Arrays.fill(blockBases, (byte) '?');
+            }
             System.arraycopy(readBases, fromIdx, blockBases, 0, nBases);
         }
-
-        nBasesAvailable = nBases;
-        if (checkNBasesAvailable) {
-            nBasesAvailable = readBaseQualities.length - fromIdx;
-        }
-        if (readBaseQualities == null || readBaseQualities.length == 0 || nBasesAvailable < nBases) {
-            Arrays.fill(blockQualities, (byte) 126);
-        } else {
+        if (readBaseQualities != null && readBaseQualities.length > 0) {
+            int nBasesAvailable = nBases;
+            if (checkNBasesAvailable) {
+                nBasesAvailable = readBaseQualities.length - fromIdx;
+            }
+            blockQualities = new byte[nBases];
+            if (nBasesAvailable < nBases) {
+                Arrays.fill(blockQualities, (byte) 126);
+            }
             System.arraycopy(readBaseQualities, fromIdx, blockQualities, 0, nBases);
         }
-
-        AlignmentBlockImpl block = new AlignmentBlockImpl(blockStart, blockBases, blockQualities);
-
+        AlignmentBlockImpl block = new AlignmentBlockImpl(blockStart, blockBases, blockQualities, nBases, operator);
         return block;
     }
 
@@ -471,8 +478,10 @@ public abstract class SAMAlignment implements Alignment {
         int basePosition = (int) position;
         StringBuffer buf = new StringBuffer();
 
-        buf.append("Hap name: " + getHaplotypeName() + "<br>");
-        buf.append("Dist: " + getHapDistance() + "<br>");
+        if (getHaplotypeName() != null) {
+            buf.append("Hap name: " + getHaplotypeName() + "<br>");
+            buf.append("Dist: " + getHapDistance() + "<br>");
+        }
 
         // First check insertions.  Position is zero based, block coords 1 based
         if (this.insertions != null) {
@@ -513,7 +522,7 @@ public abstract class SAMAlignment implements Alignment {
         if (readGroup != null) {
             buf.append("Read group = " + readGroup + "<br>");
         }
-        buf.append("Read length = " + Globals.DECIMAL_FORMAT.format(getReadLength()) + "bp<br>");
+        buf.append("Read length = " + getReadLengthString() + "<br>");
 
 
         String cigarString = getCigarString();
@@ -657,8 +666,7 @@ public abstract class SAMAlignment implements Alignment {
             try {
                 SupplementaryAlignment a = new SupplementaryAlignment(rec);
                 buf.append("<br>" + a.printString());
-            }
-            catch (Exception e) {
+            } catch (Exception e) {
                 buf.append("<br>* Invalid SA entry (not listed) *");
             }
         }
@@ -962,7 +970,6 @@ public abstract class SAMAlignment implements Alignment {
     }
 
 
-
     ///// EXPERIMENTAL
 
     String haplotypeName;
@@ -978,10 +985,12 @@ public abstract class SAMAlignment implements Alignment {
     }
 
     int hapDistance;
+
     @Override
     public void setHapDistance(int dist) {
         this.hapDistance = dist;
     }
+
     @Override
     public int getHapDistance() {
         return hapDistance;

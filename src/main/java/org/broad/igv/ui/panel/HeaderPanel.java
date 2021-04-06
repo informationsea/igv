@@ -38,6 +38,7 @@ package org.broad.igv.ui.panel;
 import org.broad.igv.feature.RegionOfInterest;
 import org.broad.igv.track.TrackMenuUtils;
 import org.broad.igv.ui.IGV;
+import org.broad.igv.ui.util.IGVMouseInputAdapter;
 import org.broad.igv.ui.util.SwitchingLabelUI;
 
 import javax.swing.*;
@@ -76,7 +77,7 @@ public class HeaderPanel extends JPanel implements Transferable {
 
     private void init() {
 
-
+        //setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(200, 200, 200)));
         setBackground(new java.awt.Color(255, 255, 255));
         setMinimumSize(new java.awt.Dimension(700, 0));
         setPreferredSize(new java.awt.Dimension(0, 0));
@@ -89,89 +90,101 @@ public class HeaderPanel extends JPanel implements Transferable {
             geneListPanel.setPreferredSize(new java.awt.Dimension(0, 0));
             geneListPanel.setLayout(new java.awt.BorderLayout());
 
-
             label = new JLabel(frame.getName());
             label.setForeground(Color.blue);
-            label.setUI(new SwitchingLabelUI(10));
-            label.setToolTipText(frame.getName());
-            label.setPreferredSize(new Dimension(500, 80));
-
-            //label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            //label.addMouseListener(mouseAdapter);
-
-
-            setSize(400, 100);
-            setVisible(true);
+            label.setToolTipText("Go to " + frame.getName());
+            label.addMouseListener(new MouseAdapter() {
+                long mouseDownTime = 0;
+                @Override
+                public void mousePressed(MouseEvent evt) {
+                    if(evt.isPopupTrigger()) {
+                        getPopupMenu(HeaderPanel.this, frame).show(HeaderPanel.this, evt.getX(), evt.getY());
+                        mouseDownTime = 0;
+                    } else {
+                        mouseDownTime = System.currentTimeMillis();
+                    }
+                }
+                @Override
+                public void mouseReleased(MouseEvent evt) {
+                    if(evt.isPopupTrigger()) {
+                        getPopupMenu(HeaderPanel.this, frame).show(HeaderPanel.this, evt.getX(), evt.getY());
+                    } else {
+                        if(System.currentTimeMillis()- mouseDownTime < 1000) {
+                            IGV.getInstance().setDefaultFrame(frame.getName());
+                        }
+                    }
+                    mouseDownTime = 0;
+                }
+            });
+            label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
             cytobandPanel = new CytobandPanel(frame, false);
-            cytobandPanel.setBackground(new java.awt.Color(255, 255, 255));
-            cytobandPanel.setPreferredSize(new java.awt.Dimension(0, 20));
+            cytobandPanel.setPreferredSize(new java.awt.Dimension(0, 40));
             cytobandPanel.setRequestFocusEnabled(false);
             cytobandPanel.setLayout(null);
 
-            final MouseAdapter mouseAdapter = new MouseAdapter() {
-
+            final MouseAdapter mouseAdapter = new IGVMouseInputAdapter() {
                 boolean isDragging = false;
-                Point mousePressPoint;
-
-                @Override
-                public void mouseClicked(MouseEvent mouseEvent) {
-                    if (mouseEvent.getClickCount() > 1) {
-                        IGV.getInstance().setDefaultFrame(frame.getName());
-                    }
-                }
-
-
                 public void mousePressed(MouseEvent evt) {
+                    super.mousePressed(evt);
                     if (evt.isPopupTrigger()) {
                         getPopupMenu(HeaderPanel.this, frame).show(HeaderPanel.this, evt.getX(), evt.getY());
                     }
                 }
-
                 @Override
                 public void mouseReleased(MouseEvent evt) {
-
+                    super.mouseReleased(evt);
                     if (evt.isPopupTrigger()) {
                         getPopupMenu(HeaderPanel.this, frame).show(HeaderPanel.this, evt.getX(), evt.getY());
                     }
                     isDragging = false;
-
                 }
-
-
                 @Override()
                 public void mouseDragged(MouseEvent e) {
-
                     if (isDragging) {
                         return;
                     }
-
                     isDragging = true;
                     JComponent c = HeaderPanel.this;
                     TransferHandler handler = c.getTransferHandler();
                     if (handler != null) {
                         handler.exportAsDrag(c, e, TransferHandler.MOVE);
                     }
-
                 }
             };
 
             cytobandPanel.addMouseListener(mouseAdapter);
             cytobandPanel.addMouseMotionListener(mouseAdapter);
 
-            label.addMouseListener(mouseAdapter);
-            label.addMouseMotionListener(mouseAdapter);
-
             this.addMouseListener(mouseAdapter);
             this.addMouseMotionListener(mouseAdapter);
 
-            geneListPanel.add(cytobandPanel, BorderLayout.CENTER);
-            geneListPanel.add(label, BorderLayout.SOUTH);
-            add(geneListPanel);
+            geneListPanel.add(cytobandPanel, BorderLayout.NORTH);
 
+            JPanel labelPanel = new JPanel();
+            BoxLayout layout = new BoxLayout(labelPanel, BoxLayout.LINE_AXIS);
+            labelPanel.setLayout(layout);
+            final JPanel spacerLeft = new JPanel();
+            spacerLeft.setBackground(new java.awt.Color(255, 255, 255));
+            labelPanel.add(spacerLeft);
+            labelPanel.add(label);
+            final JPanel spacerRight = new JPanel();
+            spacerRight.setBackground(new java.awt.Color(255, 255, 255));
+            labelPanel.add(spacerRight);
+            labelPanel.setBackground(new java.awt.Color(255, 255, 255));
+            geneListPanel.add(labelPanel, BorderLayout.CENTER);
+
+            JPanel bottomPanel = new JPanel();
+            bottomPanel.setBackground(new java.awt.Color(255, 255, 255));
+            geneListPanel.add(bottomPanel, BorderLayout.SOUTH);
+
+            add(geneListPanel);
             this.setTransferHandler(new DragAndDropTransferHandler());
             // Create the listener to do the work when dropping on this object!
             this.setDropTarget(new DropTarget(this, new HeaderDropTargetListener(this)));
+
+            setSize(400, 100);
+            setVisible(true);
 
 
         } else {
@@ -207,10 +220,6 @@ public class HeaderPanel extends JPanel implements Transferable {
 
 
     }
-
-
-    // TODO -- this is a partial copy of the RegionOfInterestPanel method.  Refactor to share
-
 
     protected JPopupMenu getPopupMenu(final HeaderPanel parent, final ReferenceFrame frame) {
 
@@ -258,7 +267,6 @@ public class HeaderPanel extends JPanel implements Transferable {
     }
 
     @Override
-
     public void setBackground(Color color) {
         super.setBackground(color);
         if (cytobandPanel != null) cytobandPanel.setBackground(color);
@@ -282,6 +290,7 @@ public class HeaderPanel extends JPanel implements Transferable {
 
         return dragAndDropPanelDataFlavor;
     }
+
 
     //private static final Cursor droppableCursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR);
     //private static final Cursor notDroppableCursor = Cursor.getDefaultCursor();

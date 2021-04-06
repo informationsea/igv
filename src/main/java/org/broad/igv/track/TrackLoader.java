@@ -44,7 +44,6 @@ import org.broad.igv.feature.GisticFileParser;
 import org.broad.igv.feature.MutationTrackLoader;
 import org.broad.igv.feature.ShapeFileUtils;
 import org.broad.igv.feature.basepair.BasePairTrack;
-import org.broad.igv.bedpe.BedPEFeature;
 import org.broad.igv.bedpe.BedPEParser;
 import org.broad.igv.bedpe.InteractionTrack;
 import org.broad.igv.feature.bionano.SMAPParser;
@@ -52,21 +51,21 @@ import org.broad.igv.feature.bionano.SMAPRenderer;
 import org.broad.igv.feature.dranger.DRangerParser;
 import org.broad.igv.feature.dsi.DSIRenderer;
 import org.broad.igv.feature.dsi.DSITrack;
-import org.broad.igv.feature.genome.GenbankParser;
+import org.broad.igv.feature.genome.load.GenbankParser;
 import org.broad.igv.feature.genome.Genome;
 import org.broad.igv.feature.genome.GenomeManager;
+import org.broad.igv.feature.gff.GFFFeatureSource;
 import org.broad.igv.feature.sprite.ClusterParser;
 import org.broad.igv.feature.sprite.ClusterTrack;
 import org.broad.igv.feature.tribble.CodecFactory;
 import org.broad.igv.feature.tribble.FeatureFileHeader;
+import org.broad.igv.feature.tribble.GFFCodec;
 import org.broad.igv.feature.tribble.TribbleIndexNotFoundException;
 import org.broad.igv.goby.GobyAlignmentQueryReader;
 import org.broad.igv.goby.GobyCountArchiveDataSource;
 import org.broad.igv.google.Ga4ghAPIHelper;
 import org.broad.igv.google.GoogleUtils;
-import org.broad.igv.gwas.GWASData;
-import org.broad.igv.gwas.GWASParser;
-import org.broad.igv.gwas.GWASTrack;
+import org.broad.igv.gwas.*;
 import org.broad.igv.lists.GeneList;
 import org.broad.igv.lists.GeneListManager;
 import org.broad.igv.maf.MultipleAlignmentTrack;
@@ -89,10 +88,7 @@ import org.broad.igv.variant.VariantTrack;
 import org.broad.igv.variant.util.PedigreeUtils;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
+import java.util.*;
 
 import static org.broad.igv.prefs.Constants.*;
 
@@ -399,8 +395,13 @@ public class TrackLoader {
 
             TribbleFeatureSource tribbleFeatureSource = TribbleFeatureSource.getFeatureSource(locator, genome);
 
-            FeatureSource src = GFFFeatureSource.isGFF(locator.getPath()) ?
-                    new GFFFeatureSource(tribbleFeatureSource) : tribbleFeatureSource;
+            FeatureSource src;
+            if(GFFFeatureSource.isGFF(locator.getPath())) {
+                GFFCodec codec =  (GFFCodec) CodecFactory.getCodec(locator, genome);
+                 src = new GFFFeatureSource(tribbleFeatureSource, codec.getVersion()) ;
+            } else {
+                src = tribbleFeatureSource;
+            }
 
             // Create feature source and track
             FeatureTrack t = new FeatureTrack(locator, src);
@@ -423,7 +424,11 @@ public class TrackLoader {
                     t.setHeight(15);
                 }
             }
-            if (locator.getPath().contains(".narrowPeak") || locator.getPath().contains(".broadPeak") || locator.getPath().contains(".gappedPeak")) {
+            String path = locator.getPath().toLowerCase();
+            if (path.contains(".narrowpeak") ||
+                    locator.getPath().contains(".broadpeak") ||
+                    locator.getPath().contains(".gappedpeak")||
+                    locator.getPath().contains(".regionpeak") ) {
                 t.setUseScore(true);
             }
             newTracks.add(t);
@@ -465,9 +470,9 @@ public class TrackLoader {
     private void loadGWASFile(ResourceLocator locator, List<Track> newTracks, Genome genome) throws IOException {
 
         GWASParser gwasParser = new GWASParser(locator, genome);
-        GWASData gwasData = gwasParser.parse();
+        Map<String, List<GWASFeature>> gwasData = gwasParser.parse();
 
-        GWASTrack gwasTrack = new GWASTrack(locator, locator.getPath(), locator.getFileName(), gwasData, gwasParser);
+        GWASTrack gwasTrack = new GWASTrack(locator, locator.getPath(), locator.getFileName(), gwasData, gwasParser.getColumnHeaders(), genome);
         newTracks.add(gwasTrack);
 
     }
@@ -705,13 +710,7 @@ public class TrackLoader {
             ParsingUtils.parseTrackLine(trackLine, props);
         }
 
-        // In case of conflict between the resource locator display name and the track properties name,
-        // use the resource locator
         String name = locator.getName();
-        if (name != null && props != null) {
-            props.setName(name);
-        }
-
         if (name == null) {
             name = props == null ? locator.getTrackName() : props.getName();
         }
@@ -994,7 +993,6 @@ public class TrackLoader {
             SegmentFileParser parser = new SegmentFileParser(locator);
             ds = parser.loadSegments(locator, genome);
         }
-
         loadSegTrack(locator, newTracks, genome, ds);
     }
 

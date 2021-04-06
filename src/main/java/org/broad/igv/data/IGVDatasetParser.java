@@ -120,41 +120,6 @@ public class IGVDatasetParser {
         }
     }
 
-    /*
-     */
-
-    public static boolean parsableMAGE_TAB(ResourceLocator file) throws IOException {
-        AsciiLineReader reader = null;
-        try {
-            reader = ParsingUtils.openAsciiReader(file);
-            String nextLine = null;
-
-            //skip first row
-            reader.readLine();
-
-            //check second row for MAGE_TAB identifiers
-            if ((nextLine = reader.readLine()) != null && (nextLine.contains("Reporter REF") || nextLine.contains("Composite Element REF") || nextLine.contains("Term Source REF") || nextLine.contains("CompositeElement REF") || nextLine.contains("TermSource REF") || nextLine.contains("Coordinates REF"))) {
-                int count = 0;
-                // check if this mage_tab data matrix can be parsed by this class
-                while ((nextLine = reader.readLine()) != null && count < 5) {
-                    nextLine = nextLine.trim();
-                    if (nextLine.startsWith("SNP_A") || nextLine.startsWith("CN_")) {
-                        return true;
-                    }
-
-                    count++;
-                }
-                return false;
-            }
-        } finally {
-            if (reader != null) {
-                reader.close();
-            }
-        }
-
-        return false;
-    }
-
     /**
      * Scan the datafile for chromosome breaks.
      *
@@ -395,13 +360,14 @@ public class IGVDatasetParser {
     public ChromosomeData loadChromosomeData(ChromosomeSummary chrSummary, String[] dataHeaders) {
 
         // InputStream is = null;
+        SeekableStream is = null;
         try {
             int skipColumns = hasCalls ? 2 : 1;
 
             // Get an estimate of the number of snps (rows).  THIS IS ONLY AN ESTIMATE
             int nRowsEst = chrSummary.getNDataPts();
 
-            SeekableStream is = IGVSeekableStreamFactory.getInstance().getStreamFor(dataResourceLocator.getPath());
+            is = IGVSeekableStreamFactory.getInstance().getStreamFor(dataResourceLocator.getPath());
             is.seek(chrSummary.getStartPosition());
             AsciiLineReader reader = new AsciiLineReader(is);
 
@@ -420,7 +386,7 @@ public class IGVDatasetParser {
             String chromosome = chrSummary.getName();
             boolean chromosomeStarted = false;
             String nextLine = reader.readLine();
-
+            int skippedLineCount = 0;
             while ((nextLine != null) && (nextLine.trim().length() > 0)) {
 
                 if (!nextLine.startsWith("#")) {
@@ -463,9 +429,10 @@ public class IGVDatasetParser {
                         }
 
                     } catch (NumberFormatException numberFormatException) {
-
-                        // Skip line
-                        log.info("Skipping line (NumberFormatException) " + nextLine);
+                        if(skippedLineCount < 5) {
+                            skippedLineCount++;
+                            log.info("Skipping line: " + nextLine + (skippedLineCount < 5 ? "" : " Further skipped lines will not be logged"));
+                        }
                     }
                 }
 
@@ -487,8 +454,14 @@ public class IGVDatasetParser {
             return cd;
 
         } catch (IOException ex) {
-            log.error("Error parsing cn file", ex);
-            throw new RuntimeException("Error parsing cn file", ex);
+            log.error("Error parsing igv file " + this.dataResourceLocator.getPath(), ex);
+            throw new RuntimeException("Error parsing igv file", ex);
+        } finally {
+            try {
+                is.close();
+            } catch (IOException e) {
+                log.error("Error closing igv file " + this.dataResourceLocator.getPath(), e);
+            }
         }
 
     }
@@ -689,10 +662,6 @@ public class IGVDatasetParser {
             for (String h : headings) {
                 data.put(h, new FloatArrayList(50000));
             }
-        }
-
-        int size() {
-            return locations.size();
         }
     }
 

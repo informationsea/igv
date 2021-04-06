@@ -53,9 +53,10 @@ public class TrackPanel extends IGVPanel {
     private AttributePanel attributePanel;
     private DataPanelContainer dataPanelContainer;
     private String groupAttribute;
-    int trackCountEstimate = 0;  // <= used to size array list, not neccesarily precise
+    private int trackCountEstimate = 0;  // <= used to size array list, not neccesarily precise
+    private List<TrackGroup> trackGroups;
 
-    List<TrackGroup> trackGroups;
+    transient int lastHeight = 0;
 
     /**
      * Constructs ...
@@ -156,6 +157,12 @@ public class TrackPanel extends IGVPanel {
         return count;
     }
 
+    public boolean isHeightChanged() {
+        int height = getPreferredPanelHeight();
+        boolean change = height != lastHeight;
+        lastHeight = height;
+        return change;
+    }
 
     public List<Track> getTracks() {
         ArrayList<Track> tracks = new ArrayList(trackCountEstimate);
@@ -169,7 +176,6 @@ public class TrackPanel extends IGVPanel {
 
         final Genome currentGenome = GenomeManager.getInstance().getCurrentGenome();
         Track geneTrack = currentGenome == null ? null : currentGenome.getGeneTrack();
-
         for (Track t : getTracks()) {
             if (t != geneTrack) {
                 t.dispose();
@@ -211,6 +217,10 @@ public class TrackPanel extends IGVPanel {
         for (Track t : tracks) {
             addTrack(t);
         }
+    }
+
+    public boolean hasTrack(Track track) {
+        return trackGroups.stream().anyMatch(tg -> (new HashSet(tg.getTracks()).contains(track)));
     }
 
     public void moveGroup(TrackGroup group, int index) {
@@ -299,7 +309,6 @@ public class TrackPanel extends IGVPanel {
                                    final ReferenceFrame frame, List<String> sortedSamples) {
 
         sortGroupsByRegionScore(trackGroups, region, type, frame.getZoom(), frame.getName());
-
         for (TrackGroup group : trackGroups) {
             // If there is a non-null linking attribute
             // Segregate tracks into 2 sub-groups, those matching the score type and those that do not
@@ -326,22 +335,14 @@ public class TrackPanel extends IGVPanel {
             final String chr = region.getChr();
             final int start = region.getStart();
             final int end = region.getEnd();
-            Comparator<TrackGroup> c = new Comparator<TrackGroup>() {
-
-                public int compare(TrackGroup group1, TrackGroup group2) {
-                    float s1 = group1.getRegionScore(chr, start, end, zoom, type, frameName);
-                    float s2 = group2.getRegionScore(chr, start, end, zoom, type, frameName);
-
-                    // Use the Float comparator as it handles NaN.  Need to flip the order to make it descending
-                    return Float.compare(s2, s1);
-
-
-                }
+            Comparator<TrackGroup> c = (group1, group2) -> {
+                float s1 = group1.getRegionScore(chr, start, end, zoom, type, frameName);
+                float s2 = group2.getRegionScore(chr, start, end, zoom, type, frameName);
+                // Use the Float comparator as it handles NaN.  Need to flip the order to make it descending
+                return Float.compare(s2, s1);
             };
-
             Collections.sort(groups, c);
         }
-
     }
 
 
@@ -376,6 +377,13 @@ public class TrackPanel extends IGVPanel {
         }
     }
 
+    /**
+     * Remove, but do not dispose of, tracks.  Used by session reader
+     */
+    public void removeAllTracks() {
+        trackGroups.clear();
+        trackCountEstimate = 0;
+    }
 
     /**
      * Insert the selectedTracks collection either before or after the target and return true.
@@ -433,7 +441,7 @@ public class TrackPanel extends IGVPanel {
     }
 
     @Override
-    public void paintOffscreen(Graphics2D g, Rectangle rect) {
+    public void paintOffscreen(Graphics2D g, Rectangle rect, boolean batch) {
 
         int h = rect.height;
 
@@ -447,7 +455,7 @@ public class TrackPanel extends IGVPanel {
         if (nameRect.width > 0) {
             Graphics2D nameGraphics = (Graphics2D) g.create();
             nameGraphics.setClip(nameRect);
-            ((Paintable) children[0]).paintOffscreen(nameGraphics, nameRect);
+            ((Paintable) children[0]).paintOffscreen(nameGraphics, nameRect, batch);
             nameGraphics.dispose();
         }
 
@@ -457,7 +465,7 @@ public class TrackPanel extends IGVPanel {
         if (attRect.width > 0) {
             Graphics2D attGraphics = (Graphics2D) g.create();
             attGraphics.setClip(attRect);
-            ((Paintable) children[1]).paintOffscreen(attGraphics, attRect);
+            ((Paintable) children[1]).paintOffscreen(attGraphics, attRect, batch);
             attGraphics.dispose();
         }
 
@@ -466,12 +474,17 @@ public class TrackPanel extends IGVPanel {
         Rectangle dataRect = new Rectangle(0, 0, mainPanel.getDataPanelWidth(), h);
         Graphics2D dataGraphics = (Graphics2D) g.create();
         dataGraphics.setClip(dataRect);
-        ((Paintable) children[2]).paintOffscreen(dataGraphics, dataRect);
+        ((Paintable) children[2]).paintOffscreen(dataGraphics, dataRect, batch);
         dataGraphics.dispose();
 
 
         //super.paintBorder(g);
 
+    }
+
+    @Override
+    public int getSnapshotHeight(boolean batch) {
+        return getHeight();
     }
 
     public void addTrackGroup(TrackGroup trackGroup) {

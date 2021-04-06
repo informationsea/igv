@@ -34,6 +34,8 @@ public interface AlignmentBlock {
 
     boolean contains(int position);
 
+    int getBasesLength();
+
     int getLength();
 
     byte getBase(int offset);
@@ -59,5 +61,7 @@ public interface AlignmentBlock {
     default int getPadding() {
         return 0;
     }
+
+    char getCigarOperator();
 
 }

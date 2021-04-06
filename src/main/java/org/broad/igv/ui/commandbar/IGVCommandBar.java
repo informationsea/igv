@@ -46,6 +46,7 @@ import org.broad.igv.ui.IGV;
 import org.broad.igv.ui.ShowDetailsBehavior;
 import org.broad.igv.ui.UIConstants;
 import org.broad.igv.ui.action.FitDataToWindowMenuAction;
+import org.broad.igv.ui.action.ReloadTracksMenuAction;
 import org.broad.igv.ui.panel.FrameManager;
 import org.broad.igv.ui.panel.IGVPopupMenu;
 import org.broad.igv.ui.panel.ReferenceFrame;
@@ -101,14 +102,11 @@ public class IGVCommandBar extends javax.swing.JPanel implements IGVEventObserve
         // Post creation widget setup.
         refreshGenomeListComboBox();
 
-
         String currentChr = FrameManager.getDefaultFrame().getChrName();
         boolean isWholeGenome = currentChr.equals(Globals.CHR_ALL);
 
         chromosomeComboBox.setSelectedItem(currentChr);
-
         roiToggleButton.setEnabled(!isWholeGenome);
-
         zoomControl.setEnabled(!isWholeGenome);
 
         detailsBehaviorButton.addMouseListener(new MouseAdapter() {
@@ -147,9 +145,9 @@ public class IGVCommandBar extends javax.swing.JPanel implements IGVEventObserve
 
     public void setGeneListMode(boolean geneListMode) {
 
-        genomeComboBox.setEnabled(!geneListMode);
 //        locationPanel.setEnabled(!geneListMode);
         chromosomeComboBox.setEnabled(!geneListMode);
+        if(geneListMode) searchTextField.setText("");
 //        searchTextField.setEnabled(!geneListMode);
 //        goButton.setEnabled(!geneListMode);
         zoomControl.setEnabled(!geneListMode);
@@ -166,7 +164,7 @@ public class IGVCommandBar extends javax.swing.JPanel implements IGVEventObserve
      */
     public void selectGenome(String genomeId) {
 
-        log.info("Selecting genome " + genomeId);
+        //log.info("Selecting genome " + genomeId);
 
         GenomeListItem selectedItem = GenomeListManager.getInstance().getGenomeListItem(genomeId);
 
@@ -186,25 +184,26 @@ public class IGVCommandBar extends javax.swing.JPanel implements IGVEventObserve
 
     public void updateCurrentCoordinates() {
 
-        String p = "";
-
-        ReferenceFrame defaultFrame = FrameManager.getDefaultFrame();
-        final String chrName = defaultFrame.getChrName();
-        if (!Globals.CHR_ALL.equals(chrName) && !FrameManager.isGeneListMode()) {
-            p = defaultFrame.getFormattedLocusString();
-        }
-        final String position = p;
-        final History history = IGV.getInstance().getSession().getHistory();
-
-        UIUtilities.invokeOnEventThread(new Runnable() {
-            public void run() {
-                searchTextField.setText(position);
-                forwardButton.setEnabled(history.canGoForward());
-                backButton.setEnabled(history.canGoBack());
-                roiToggleButton.setEnabled(!Globals.CHR_ALL.equals(chrName));
-                zoomControl.setEnabled(!Globals.CHR_ALL.equals(chrName));
+        if(IGV.hasInstance()) {
+            String p = "";
+            ReferenceFrame defaultFrame = FrameManager.getDefaultFrame();
+            final String chrName = defaultFrame.getChrName();
+            if (!Globals.CHR_ALL.equals(chrName) && !FrameManager.isGeneListMode()) {
+                p = defaultFrame.getFormattedLocusString();
             }
-        });
+            final String position = p;
+            final History history = IGV.getInstance().getSession().getHistory();
+
+            UIUtilities.invokeOnEventThread(new Runnable() {
+                public void run() {
+                    searchTextField.setText(position);
+                    forwardButton.setEnabled(history.canGoForward());
+                    backButton.setEnabled(history.canGoBack());
+                    roiToggleButton.setEnabled(!Globals.CHR_ALL.equals(chrName));
+                    zoomControl.setEnabled(!Globals.CHR_ALL.equals(chrName));
+                }
+            });
+        }
     }
 
 
@@ -267,10 +266,7 @@ public class IGVCommandBar extends javax.swing.JPanel implements IGVEventObserve
     private void refreshButtonActionPerformed(java.awt.event.ActionEvent evt) {
 
         IGVEventBus.getInstance().post(new org.broad.igv.event.RefreshEvent());
-        if (IGV.hasInstance()) {
-            IGV.getInstance().doRefresh();
-        }
-        System.gc();
+        (new ReloadTracksMenuAction("",-1, IGV.getInstance())).actionPerformed(evt);
 
     }
 
@@ -353,8 +349,8 @@ public class IGVCommandBar extends javax.swing.JPanel implements IGVEventObserve
 
         setLayout(layout);
 
-        detailsBehavior = ShowDetailsBehavior.valueOf((PreferencesManager.getPreferences().get(Constants.DETAILS_BEHAVIOR_KEY,
-                ShowDetailsBehavior.HOVER.name()).toUpperCase()));
+        final String detailsPreference = PreferencesManager.getPreferences().get(Constants.DETAILS_BEHAVIOR_KEY);
+        detailsBehavior = ShowDetailsBehavior.valueOf((detailsPreference.toUpperCase()));
 
         // This controls the vertical height of the command bar
 
@@ -450,11 +446,7 @@ public class IGVCommandBar extends javax.swing.JPanel implements IGVEventObserve
         homeButton.setMinimumSize(new java.awt.Dimension(32, 32));
         homeButton.setPreferredSize(new java.awt.Dimension(32, 32));
         homeButton.setToolTipText("Jump to whole genome view");
-        homeButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                homeButtonActionPerformed(evt);
-            }
-        });
+        homeButton.addActionListener(evt -> homeButtonActionPerformed(evt));
         toolPanel.add(homeButton, JideBoxLayout.FIX);
 
 
@@ -468,11 +460,9 @@ public class IGVCommandBar extends javax.swing.JPanel implements IGVEventObserve
         backButton.setMaximumSize(new java.awt.Dimension(32, 32));
         backButton.setMinimumSize(new java.awt.Dimension(32, 32));
         backButton.setPreferredSize(new java.awt.Dimension(32, 32));
-        backButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                IGV.getInstance().getSession().getHistory().back();
-
-            }
+        backButton.addActionListener(evt -> {
+            final History history = IGV.getInstance().getSession().getHistory();
+            history.back();
         });
         backButton.setEnabled(false);
         toolPanel.add(backButton, JideBoxLayout.FIX);
@@ -485,10 +475,9 @@ public class IGVCommandBar extends javax.swing.JPanel implements IGVEventObserve
         forwardButton.setMaximumSize(new java.awt.Dimension(32, 32));
         forwardButton.setMinimumSize(new java.awt.Dimension(32, 32));
         forwardButton.setPreferredSize(new java.awt.Dimension(32, 32));
-        forwardButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                IGV.getInstance().getSession().getHistory().forward();
-            }
+        forwardButton.addActionListener(evt -> {
+            final History history = IGV.getInstance().getSession().getHistory();
+            history.forward();
         });
         forwardButton.setEnabled(false);
         toolPanel.add(forwardButton, JideBoxLayout.FIX);
@@ -502,12 +491,8 @@ public class IGVCommandBar extends javax.swing.JPanel implements IGVEventObserve
         refreshButton.setMaximumSize(new java.awt.Dimension(32, 32));
         refreshButton.setMinimumSize(new java.awt.Dimension(32, 32));
         refreshButton.setPreferredSize(new java.awt.Dimension(32, 32));
-        refreshButton.setToolTipText("Refresh the screen");
-        refreshButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                refreshButtonActionPerformed(evt);
-            }
-        });
+        refreshButton.setToolTipText("Reload tracks and refresh the screen");
+        refreshButton.addActionListener(evt -> refreshButtonActionPerformed(evt));
         toolPanel.add(refreshButton, JideBoxLayout.FIX);
 
 
@@ -570,11 +555,9 @@ public class IGVCommandBar extends javax.swing.JPanel implements IGVEventObserve
         rulerLineButton.setMaximumSize(new java.awt.Dimension(32, 32));
         rulerLineButton.setMinimumSize(new java.awt.Dimension(32, 32));
         rulerLineButton.setPreferredSize(new java.awt.Dimension(32, 32));
-        rulerLineButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                IGV.getInstance().setRulerEnabled(rulerLineButton.isSelected());
-                IGV.getInstance().revalidateTrackPanels();
-            }
+        rulerLineButton.addActionListener(evt -> {
+            IGV.getInstance().setRulerEnabled(rulerLineButton.isSelected());
+            IGV.getInstance().repaint();
         });
         toolPanel.add(rulerLineButton, JideBoxLayout.FIX);
 

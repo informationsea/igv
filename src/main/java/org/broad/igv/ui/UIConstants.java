@@ -64,6 +64,8 @@ public class UIConstants {
 
     static final public String SORT_TRACKS_TOOLTIP = "Sort tracks by attribute value";
     static final public String GROUP_TRACKS_TOOLTIP = "Group tracks by attribute value";
+    static final public String OVERLAY_TRACKS_TOOLTIP = "Overlay data (wig) tracks by attribute value";
+    static final public String RENAME_TRACKS_TOOLTIP = "Rename tracks by attribute value";
     static final public String FILTER_TRACKS_TOOLTIP = "Filter tracks by attribute value";
     static final public String SET_DEFAULT_TRACK_HEIGHT_TOOLTIP = "Set the height for all tracks";
     static final public String FIT_DATA_TO_WINDOW_TOOLTIP =
@@ -85,9 +87,6 @@ public class UIConstants {
     static final public String PREFERENCE_TOOLTIP = "Set user specific preferences";
     static final public String SHOW_HEATMAP_LEGEND_TOOLTIP = "Edit color legends and scales";
 
-    public static Font boldFont = FontManager.getFont(Font.BOLD, 12);
-
-
     final public static String OVERWRITE_SESSION_MESSAGE =
             "<html>Opening a session will unload all current data. " + "<br>Are you sure you wish to continue?";
     final public static String CANNOT_ACCESS_SERVER_GENOME_LIST = "The Genome server is currently inaccessible.";
@@ -98,9 +97,8 @@ public class UIConstants {
 
     final public static Color LIGHT_GREY = new Color(238, 239, 240);
 
-    final public static Color TRACK_BORDER_GRAY = new Color(200, 200, 210);
+    final public static Color TRACK_BORDER_GRAY = new Color(240, 240, 240);
 
-    public static Color NO_DATA_COLOR = new Color(200, 200, 200, 150);
     static final public String REMOVE_GENOME_LIST_MENU_ITEM = "Remove Imported Genomes...";
     static final public String GENOME_LIST_SEPARATOR = "--SEPARATOR--";
     static final public int DEFAULT_DOUBLE_CLICK_INTERVAL = 400;
@@ -108,16 +106,16 @@ public class UIConstants {
 
     public static int getDoubleClickInterval() {
 
-        if (doubleClickInterval < 0) {
-
-            Number obj = (Number) Toolkit.getDefaultToolkit().getDesktopProperty("awt.multiClickInterval");
-            if (obj != null) {
-                doubleClickInterval = obj.intValue();
-            } else {
+//        if (doubleClickInterval < 0) {
+//
+//            Number obj = (Number) Toolkit.getDefaultToolkit().getDesktopProperty("awt.multiClickInterval");
+//            if (obj != null) {
+//                doubleClickInterval = obj.intValue();
+//            } else {
                 doubleClickInterval = DEFAULT_DOUBLE_CLICK_INTERVAL;
-            }
-
-        }
+//            }
+//
+//        }
         return doubleClickInterval;
     }
 

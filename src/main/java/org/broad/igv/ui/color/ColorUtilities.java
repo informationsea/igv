@@ -138,13 +138,6 @@ public class ColorUtilities {
         return new Color(r, g, b, (int) (255 * alpha));
     }
 
-    public static void main(String[] args) {
-        for (int i = 200; i < 300; i++) {
-            System.out.println(i % 3);
-        }
-    }
-
-
     public static Color randomDesaturatedColor(float alpha) {
         float hue = (float) Math.random();
         float brightenss = (float) (Math.random() * 0.7);
@@ -210,11 +203,20 @@ public class ColorUtilities {
 
         Color c = null;
         if (string.contains(",")) {
-            String[] rgb = string.split(",");
-            int red = Integer.parseInt(rgb[0]);
-            int green = Integer.parseInt(rgb[1]);
-            int blue = Integer.parseInt(rgb[2]);
-            c = new Color(red, green, blue);
+            if(string.contains(".")) {
+                String[] rgb = string.split(",");
+                int red = (int) (255 * Double.parseDouble(rgb[0]));
+                int green = (int) (255 * Double.parseDouble(rgb[1]));
+                int blue = (int) (255 * Double.parseDouble(rgb[2]));
+                c = new Color(red, green, blue);
+
+            } else {
+                String[] rgb = string.split(",");
+                int red = Integer.parseInt(rgb[0]);
+                int green = Integer.parseInt(rgb[1]);
+                int blue = Integer.parseInt(rgb[2]);
+                c = new Color(red, green, blue);
+            }
         } else if (string.startsWith("#")) {
             c = hexToColor(string.substring(1));
         } else {

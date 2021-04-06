@@ -40,31 +40,23 @@ import java.io.File;
 public class RunScriptMenuAction extends MenuAction {
 
     static Logger log = Logger.getLogger(LoadFilesMenuAction.class);
-    IGV mainFrame;
+    IGV igv;
 
-    public RunScriptMenuAction(String label, int mnemonic, IGV mainFrame) {
+    public RunScriptMenuAction(String label, int mnemonic, IGV igv) {
         super(label, null, mnemonic);
-        this.mainFrame = mainFrame;
+        this.igv = igv;
     }
 
+    /**
+     * Run the batch script.  This is PURPOSELY run on the event dispatch thread to maintain absolute synchronization
+     * @param e
+     */
     public void actionPerformed(ActionEvent e) {
-
         if (e.getActionCommand().equalsIgnoreCase("run batch script...")) {
             File script = chooseScriptFile();
             if (script != null && script.isFile()) {
-                final BatchRunner bRun = new BatchRunner(script.getPath());
-
-                SwingWorker worker = new SwingWorker() {
-
-                    @Override
-                    protected Object doInBackground() throws Exception {
-                        bRun.run();
-                        return null;
-                    }
-                };
-
-                worker.execute();
-
+                final BatchRunner bRun = new BatchRunner(script.getPath(), igv);
+                bRun.run();
             }
         }
     }
@@ -80,7 +72,7 @@ public class RunScriptMenuAction extends MenuAction {
             PreferencesManager.getPreferences().setLastTrackDirectory(scriptFile.getParentFile());
         }
 
-        mainFrame.resetStatusMessage();
+        igv.resetStatusMessage();
         return scriptFile;
     }
 }

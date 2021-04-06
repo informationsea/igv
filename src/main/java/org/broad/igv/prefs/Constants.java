@@ -48,6 +48,7 @@ final public class Constants {
 
     public static final String GENOMES_SERVER_URL = "IGV.genome.sequence.dir";
     public static final String BLAT_URL = "BLAT_URL";
+    public static final String BLAT_SERVER_TYPE = "BLAT_SERVER_TYPE";
     public static final String EXTVIEW_URL = "EXTVIEW_URL";
     public static final String DATA_SERVER_URL_KEY = "MASTER_RESOURCE_FILE_KEY";
 
@@ -117,9 +118,9 @@ final public class Constants {
     public static final String SAM_HIDDEN_TAGS = "SAM.HIDDEN_TAGS";
     public static final String SAM_MAX_VISIBLE_RANGE = "SAM.MAX_VISIBLE_RANGE";
     public static final String SAM_FILTER_DUPLICATES = "SAM.FILTER_DUPLICATES";
-    public static final String SAM_SHOW_DUPLICATES = "SAM.SHOW_DUPLICATES";
     public static final String SAM_QUICK_CONSENSUS_MODE = "SAM.QUICK_CONSENSUS_MODE";
     public static final String SAM_SHOW_SOFT_CLIPPED = "SAM.SHOW_SOFT_CLIPPED";
+    public static final String SAM_MAX_SOFT_CLIP = "SAM.MAX_SOFT_CLIP";
     public static final String SAM_FLAG_UNMAPPED_PAIR = "SAM.FLAG_UNMAPPED_PAIR";
     public static final String SAM_SAMPLING_COUNT = "SAM.MAX_LEVELS"; // Sampling count
     public static final String SAM_SAMPLING_WINDOW = "SAM.SAMPLING_WINDOW";
@@ -132,6 +133,7 @@ final public class Constants {
     public static final String SAM_COLOR_BY_TAG = "SAM.COLOR_BY_TAG";
     public static final String SAM_SORT_BY_TAG = "SAM.SORT_BY_TAG";
     public static final String SAM_GROUP_BY_TAG = "SAM.GROUP_BY_TAG";
+    public static final String SAM_LINK_BY_TAGS = "SAM.LINK_BY_TAGS";
     public static final String SAM_GROUP_BY_POS = "SAM.GROUP_BY_POS";
     public static final String SAM_BISULFITE_CONTEXT = "SAM.BISULFITE_CONTEXT";
     public static final String SAM_FILTER_FAILED_READS = "SAM.FILTER_FAILED_READS";
@@ -151,17 +153,17 @@ final public class Constants {
     public static final String SAM_REDUCED_MEMORY_MODE = "SAM.REDUCED_MEMORY_MODE";
     public static final String SAM_HIDE_SMALL_INDEL = "SAM.HIDE_SMALL_INDEL";
     public static final String SAM_SMALL_INDEL_BP_THRESHOLD = "SAM.SMALL_INDEL_BP_THRESHOLD";
-    public static final String SAM_LINK_READS = "SAM.LINK_READS";
-    public static final String SAM_LINK_TAG = "SAM.LINK_TAG";
     public static final String SAM_SHOW_ALIGNMENT_TRACK = "SAM.SHOW_ALIGNMENT_TRACK";
     public static final String SAM_COLOR_A = "SAM.COLOR.A";
     public static final String SAM_COLOR_C = "SAM.COLOR.C";
     public static final String SAM_COLOR_T = "SAM.COLOR.T";
     public static final String SAM_COLOR_G = "SAM.COLOR.G";
     public static final String SAM_COLOR_N = "SAM.COLOR.N";
+    public static final String SAM_DISPLAY_MODE = "SAM.DISPLAY_MODE";
     public static final String KNOWN_SNPS = "KNOWN_SNPS_FILE";
 
     // Sequence track settings
+    public static final String SEQUENCE_TRANSLATION_STRAND = "SEQUENCE_TRANSLATION_STRAND";
     public static final String SHOW_SEQUENCE_TRANSLATION = "SHOW_SEQUENCE_TRANSLATION";
     public static final String MAX_SEQUENCE_RESOLUTION = "MAX_SEQUENCE_RESOLUTION";
     public static final String COLOR_A = "COLOR.A";
@@ -178,6 +180,10 @@ final public class Constants {
     public static final String NOCALL_COLOR = "NOCALL.COLOR";
     public static final String AF_REF_COLOR = "AF_REF.COLOR";
     public static final String AF_VAR_COLOR = "AF_VAR.COLOR";
+
+    // Heatmap settings
+    public static final String NO_DATA_COLOR = "NO_DATA.COLOR";
+    public static final String NO_CALL_COLOR = "NO_CALL.COLOR";
 
     // "Mut" and "MAF" mutation track settings
     public static final String MUTATION_COLOR_TABLE = "MUTATION_COLOR_TABLE";
@@ -269,7 +275,7 @@ final public class Constants {
             SAM_FILTER_ALIGNMENTS,
             SAM_FILTER_URL,
             SAM_MAX_VISIBLE_RANGE,
-            SAM_SHOW_DUPLICATES,
+            SAM_FILTER_DUPLICATES,
             SAM_SHOW_SOFT_CLIPPED,
             SAM_SAMPLING_COUNT,
             SAM_SAMPLING_WINDOW,
@@ -290,7 +296,9 @@ final public class Constants {
             SAM_ALLELE_THRESHOLD,
             SAM_FLAG_LARGE_INDELS,
             SAM_LARGE_INDELS_THRESHOLD,
-            SAM_SHOW_INSERTION_MARKERS
+            SAM_SHOW_INSERTION_MARKERS,
+            SAM_GROUP_OPTION,
+            SAM_GROUP_BY_TAG
     );
 
 }

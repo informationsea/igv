@@ -31,19 +31,19 @@ package org.broad.igv.ui.panel;
 
 import org.apache.log4j.Logger;
 import org.broad.igv.Globals;
-import org.broad.igv.event.ShiftEvent;
+import org.broad.igv.event.IGVEventBus;
+import org.broad.igv.event.ViewChange;
 import org.broad.igv.feature.Chromosome;
 import org.broad.igv.feature.Locus;
 import org.broad.igv.feature.Range;
 import org.broad.igv.feature.genome.Genome;
 import org.broad.igv.feature.genome.GenomeManager;
 import org.broad.igv.prefs.Constants;
+import org.broad.igv.prefs.IGVPreferences;
 import org.broad.igv.prefs.PreferencesManager;
 import org.broad.igv.sam.InsertionManager;
 import org.broad.igv.sam.InsertionMarker;
 import org.broad.igv.ui.IGV;
-import org.broad.igv.event.IGVEventBus;
-import org.broad.igv.event.ViewChange;
 import org.broad.igv.ui.util.MessageUtils;
 
 
@@ -196,7 +196,7 @@ public class ReferenceFrame {
      * @param pixelX
      * @param widthInPixels
      */
-    public synchronized void setBounds(int pixelX, int widthInPixels) {
+    public void setBounds(int pixelX, int widthInPixels) {
         this.pixelX = pixelX;
 
         if (this.widthInPixels != widthInPixels) {
@@ -242,8 +242,11 @@ public class ReferenceFrame {
     public void setOrigin(double position) {
         int windowLengthBP = (int) (widthInPixels * getScale());
         double newOrigin;
-        if (PreferencesManager.getPreferences().getAsBoolean(Constants.SAM_SHOW_SOFT_CLIPPED)) {
-            newOrigin = Math.max(-1000, Math.min(position, getMaxCoordinate() + 1000 - windowLengthBP));
+        final IGVPreferences preferences = PreferencesManager.getPreferences();
+        if (preferences.getAsBoolean(Constants.SAM_SHOW_SOFT_CLIPPED)) {
+            newOrigin = Math.max(
+                    -preferences.getAsInt(Constants.SAM_MAX_SOFT_CLIP),
+                    Math.min(position, getMaxCoordinate() + preferences.getAsInt(Constants.SAM_MAX_SOFT_CLIP) - windowLengthBP));
         } else {
             newOrigin = Math.max(0, Math.min(position, getMaxCoordinate() - windowLengthBP));
         }
@@ -425,15 +428,13 @@ public class ReferenceFrame {
 
         end = Math.min(getMaxCoordinate(chr), end);
 
-        synchronized (this) {
-            this.initialLocus = locus;
-            this.chrName = chr;
-            if (start >= 0 && end >= 0) {
-                this.origin = start;
-                beforeScaleZoom(locus);
-                computeLocationScale();
-                computeZoom();
-            }
+        this.initialLocus = locus;
+        this.chrName = chr;
+        if (start >= 0 && end >= 0) {
+            this.origin = start;
+            beforeScaleZoom(locus);
+            computeLocationScale();
+            computeZoom();
         }
 
         if (log.isDebugEnabled()) {
@@ -634,11 +635,8 @@ public class ReferenceFrame {
     }
 
     public Range getCurrentRange() {
-        int start = 0;
-        int end = widthInPixels;
-        int startLoc = (int) getChromosomePosition(start) + 1;
-        int endLoc = (int) getChromosomePosition(end);
-        Range range = new Range(getChrName(), startLoc, endLoc);
+        int endLoc = (int) Math.round(getChromosomePosition(widthInPixels));
+        Range range = new Range(getChrName(), (int) origin, endLoc);
         return range;
     }
 
@@ -648,15 +646,6 @@ public class ReferenceFrame {
 
     public String getName() {
         return name;
-    }
-
-    public Locus getInitialLocus() {
-        return initialLocus;
-    }
-
-
-    public int getMinZoom() {
-        return minZoom;
     }
 
     public void setName(String name) {

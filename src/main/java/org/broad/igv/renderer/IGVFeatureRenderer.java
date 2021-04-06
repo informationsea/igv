@@ -137,6 +137,9 @@ public class IGVFeatureRenderer extends FeatureRenderer {
 
 
             boolean alternateExonColor = (track instanceof FeatureTrack && ((FeatureTrack) track).isAlternateExonColor());
+            Color trackPosColor = track.getColor();
+            Color trackNegColor = alternateExonColor ? track.getColor() : track.getAltColor();
+
 
             for (IGVFeature feature : featureList) {
 
@@ -186,7 +189,7 @@ public class IGVFeatureRenderer extends FeatureRenderer {
                     continue;
                 }
 
-                Color color = getFeatureColor(feature, track);
+                Color color = getFeatureColor(feature, track, trackPosColor, trackNegColor);
                 Graphics2D g2D = context.getGraphic2DForColor(color);
 
                 // Draw block representing entire feature
@@ -238,7 +241,7 @@ public class IGVFeatureRenderer extends FeatureRenderer {
 
 
                 // Draw name , if there is room
-                if (displayMode != Track.DisplayMode.SQUISHED) {
+                if (displayMode != Track.DisplayMode.SQUISHED && track.isShowFeatureNames()) {
                     String name = feature.getName();
                     if (name != null) {
                         // Limit name display length
@@ -636,7 +639,7 @@ public class IGVFeatureRenderer extends FeatureRenderer {
             int aaSeqStartPosition = aaSequence.getStart();
             boolean odd =  exon.getAminoAcidNumber(exon.getCdStart()) % 2 == 1;
 
-            for (AminoAcid acid : aaSequence.getSequence()) {
+            for (CodonAA acid : aaSequence.getSequence()) {
                 if (acid != null) {
 
                     int start = Math.max(exon.getStart(), aaSeqStartPosition);
@@ -651,17 +654,18 @@ public class IGVFeatureRenderer extends FeatureRenderer {
 
 
                         Graphics2D bgGraphics = context.getGraphic2DForColor(odd ? AA_COLOR_1 : AA_COLOR_2);
-                        if (((acid.getSymbol() == 'M') && (((gene.getStrand() == Strand.POSITIVE) &&
+                        char aaSymbol = acid.getAminoAcid().getSymbol();
+                        if (((aaSymbol == 'M') && (((gene.getStrand() == Strand.POSITIVE) &&
                                 (aaSeqStartPosition == exon.getCdStart())) || ((gene.getStrand() == Strand.NEGATIVE) &&
                                 (aaSeqStartPosition == exon.getCdEnd() - 3))))) {
                             bgGraphics = context.getGraphic2DForColor(Color.green);
-                        } else if (acid.getSymbol() == '*') {
+                        } else if (aaSymbol == '*') {
                             bgGraphics = context.getGraphic2DForColor(Color.RED);
                         }
 
                         bgGraphics.fill(aaRect);
 
-                        String tmp = new String(new char[]{acid.getSymbol()});
+                        String tmp = new String(new char[]{aaSymbol});
                         GraphicUtils.drawCenteredText(tmp, aaRect, fontGraphics);
                     }
                     odd = !odd;
@@ -693,7 +697,7 @@ public class IGVFeatureRenderer extends FeatureRenderer {
         return "Basic Feature";
     }
 
-    protected Color getFeatureColor(IGVFeature feature, Track track) {
+    protected Color getFeatureColor(IGVFeature feature, Track track, Color posColor, Color negColor) {
         // Set color used to draw the feature
 
         Color color = null;
@@ -706,13 +710,8 @@ public class IGVFeatureRenderer extends FeatureRenderer {
             if (track.getTrackType() == TrackType.CNV) {
                 color = feature.getName().equals("gain") ? DULL_RED : DULL_BLUE;
             } else {
-                // Only used if feature color is not set
-                Color altColor = track.getAltColor();
-                color =  feature.getStrand() == Strand.NEGATIVE && altColor != null ?
-                        track.getAltColor() :
-                        track.getColor();
+                color = feature.getStrand() == Strand.NEGATIVE ? negColor : posColor;
             }
-
         }
 
         if (track.isUseScore()) {

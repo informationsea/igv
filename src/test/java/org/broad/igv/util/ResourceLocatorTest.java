@@ -43,11 +43,6 @@ public class ResourceLocatorTest {
         String type = loc.getTypeString();
         assertTrue(type.endsWith(".bam"));
 
-        // Genome space with type conversion
-        loc = new ResourceLocator("https://dmtest.genomespace.org:8444/datamanager/files/users/SAGDemo/Step1/TF.data.tab?dataformat=http://www.genomespace.org/datamanager/dataformat/gct/0.0.0");
-        type = loc.getTypeString();
-        assertTrue(type.endsWith(".gct"));
-
         // Bam file with non-standard url
         loc = new ResourceLocator("http://some.server.org/foo?file=/server/local/path/bar&param2=value2&dataformat=.bam");
         type = loc.getTypeString();
@@ -68,6 +63,23 @@ public class ResourceLocatorTest {
         loc = new ResourceLocator("/foo/bar.PEAK.bin");
         type = loc.getTypeString();
         assertTrue(type.endsWith(".peak.bin"));
+    }
+
+    @Test
+    public void getTrackName() throws Exception {
+
+        ResourceLocator resourceLocator = new ResourceLocator("http://foo.bar/track");
+        String trackName = resourceLocator.getTrackName();
+        assertEquals("track", trackName);
+
+        resourceLocator = new ResourceLocator("http://foo.bar/track?param=abc");
+        trackName = resourceLocator.getTrackName();
+        assertEquals("track", trackName);
+
+        resourceLocator = new ResourceLocator("http://foo.bar/track?param=abc/123");
+        trackName = resourceLocator.getTrackName();
+        assertEquals("track", trackName);
+
     }
 
 }

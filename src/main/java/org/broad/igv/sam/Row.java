@@ -73,7 +73,7 @@ public class Row implements Comparable<Row> {
         } else {
             switch (option) {
                 case START:
-                    return centerAlignment.getStart();
+                    return centerAlignment.getAlignmentStart();
                 case STRAND:
                     if(centerAlignment instanceof LinkedAlignment) {
                            return ((LinkedAlignment) centerAlignment).getStrandAtPosition(center) == Strand.NEGATIVE ? 1 : -1;
@@ -97,11 +97,14 @@ public class Row implements Comparable<Row> {
                     else {
                         score = 0;
                     }
-
                     return score;
                 case NUCLEOTIDE:
                     byte base = centerAlignment.getBase(adjustedCenter);
                     byte ref = interval.getReference(adjustedCenter);
+
+                    // Uppercase
+                    if (base >= 97) base -= 32;
+                    if (ref >= 97) ref -= 32;
 
                     // Check insertions
                     int insertionScore = 0;
@@ -114,8 +117,8 @@ public class Row implements Comparable<Row> {
                     }
 
                     float baseScore;
-                    if (base == 'N' || base == 'n') {
-                        baseScore = 2;  // Base is "n"
+                    if (base == 'N') {
+                        baseScore = 2;
                     } else if (base == ref) {
                         baseScore = 3;  // Base is reference
                     } else {
@@ -133,11 +136,9 @@ public class Row implements Comparable<Row> {
                             byte phred = centerAlignment.getPhred(adjustedCenter);
                             baseScore = -(count + (phred / 1000.0f));   // The second bit will always be < 1
                         }
-
-
                     }
 
-                    return baseScore - insertionScore;
+                    return baseScore - insertionScore;   // base score is negative, so this is actually a sum of magnitudes
 
                 case QUALITY:
                     return -centerAlignment.getMappingQuality();
@@ -172,6 +173,10 @@ public class Row implements Comparable<Row> {
                     //String hapname = centerAlignment.getHaplotypeName();
                     //return hapname == null ? 0 : hapname.hashCode();
                     return centerAlignment.getHapDistance();
+                case READ_NAME:
+                    String readName = centerAlignment.getReadName();
+                    score = readName == null ? 0 : readName.hashCode();
+                    return score;
                 default:
                     return Integer.MAX_VALUE;
 

@@ -7,6 +7,7 @@ import org.apache.log4j.Logger;
 import org.broad.igv.Globals;
 import org.broad.igv.batch.CommandListener;
 import org.broad.igv.event.IGVEventBus;
+import org.broad.igv.prefs.PreferencesManager;
 import org.broad.igv.ui.util.MessageUtils;
 import org.broad.igv.util.AmazonUtils;
 import org.broad.igv.util.HttpUtils;
@@ -39,7 +40,8 @@ public class OAuthProvider {
     private static final String REFRESH_TOKEN_KEY = "oauth_refresh_token";
 
     private String state = UUID.randomUUID().toString(); // "RFC6749: An opaque value used by the client to maintain state"
-    private String redirectURI = "http%3A%2F%2Flocalhost%3A60151%2FoauthCallback";
+    private String portNumber = PreferencesManager.getPreferences().getPortNumber();
+    private String redirectURI = "http%3A%2F%2Flocalhost%3A"+portNumber+"%2FoauthCallback";
     private String oobURI = "urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob";
     private String clientId;
     private String clientSecret;
@@ -91,7 +93,7 @@ public class OAuthProvider {
                 String gsScope = "https://www.googleapis.com/auth/devstorage.read_only";
                 String driveScope = "https://www.googleapis.com/auth/drive.readonly";
                 String emailScope = "https://www.googleapis.com/auth/userinfo.email";
-                scope = driveScope + "%20" + gsScope + "%20" + emailScope;
+                scope = gsScope + "%20" + emailScope;
 
             }
             if (authProvider == null) {
@@ -187,7 +189,8 @@ public class OAuthProvider {
         if (clientSecret != null) {
             params.put("client_secret", clientSecret);
         }
-        params.put("redirect_uri", new URLDecoder().decode(redirectURI, "utf-8"));
+
+        params.put("redirect_uri", new URLDecoder().decode(redirect, "utf-8"));
         params.put("grant_type", "authorization_code");
 
         //  set the resource if it necessary for the auth provider dwm08
@@ -414,7 +417,7 @@ public class OAuthProvider {
     /**
      * Try to login to secure server. dwm08
      */
-    public void doSecureLogin() {
+    public synchronized void doSecureLogin() {
         // if user is not currently logged in, attempt to
         // log in user if not logged in dwm08
         if (!isLoggedIn()) {
@@ -435,61 +438,6 @@ public class OAuthProvider {
                 Thread.sleep(100);
             } catch (InterruptedException e1) {
                 e1.printStackTrace();
-            }
-        }
-    }
-
-    /**
-     * Generate a set of all urls in the session file
-     *
-     * @param sessionPath
-     * @return list of urls
-     */
-    public static Set<String> findUrlsInSessionFile(String sessionPath) {
-        BufferedReader br = null;
-        HashSet<String> urlSet = new HashSet<>();
-        try {
-            br = new BufferedReader(new FileReader(new File(sessionPath)));
-            String line;
-            while ((line = br.readLine()) != null) {
-                int start = line.indexOf("http");
-                if (start != -1) {
-                    int mid = line.indexOf("://", start);
-                    int end = line.indexOf("/", mid + 3);
-                    String url = line.substring(start, end);
-                    urlSet.add(url);
-                }
-            }
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            if (br != null) {
-                try {
-                    br.close();
-                } catch (IOException e) {
-                }
-            }
-        }
-        return urlSet;
-    }
-
-    /**
-     * Check if any reference in the session file refers to a server protected
-     * by the oauth protocol. If so, check to see if the user is logged in. If
-     * user is not logged in, put up login prompt.
-     *
-     * @param sessionPath
-     */
-    public void checkServerLogin(String sessionPath) {
-        Set<String> urlSet = findUrlsInSessionFile(sessionPath);
-        if (urlSet.size() > 0) {
-            for (String url : urlSet) {
-                if (GoogleUtils.isGoogleCloud(url)) {
-                    doSecureLogin();
-                    // user is logged in. Can proceed with the load
-                    return;
-                }
             }
         }
     }

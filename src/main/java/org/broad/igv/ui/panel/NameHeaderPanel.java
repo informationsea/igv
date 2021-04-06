@@ -29,14 +29,11 @@
  */
 package org.broad.igv.ui.panel;
 
-import com.jidesoft.swing.JideBoxLayout;
-import com.jidesoft.swing.JideButton;
-import org.broad.igv.ui.FontManager;
 import org.broad.igv.ui.IGV;
+import org.broad.igv.ui.util.IGVMouseInputAdapter;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
 /**
@@ -44,21 +41,27 @@ import java.awt.event.MouseEvent;
  *
  * @author jrobinso
  */
-public class NameHeaderPanel extends JPanel  implements Paintable {
+public class NameHeaderPanel extends JPanel implements Paintable {
 
 
     public NameHeaderPanel() {
 
-        this.addMouseListener(new MouseAdapter() {
+        // Clicking on panel will clear all track selections
+        this.addMouseListener(new IGVMouseInputAdapter() {
             @Override
-            public void mouseClicked(MouseEvent mouseEvent) {
+            public void igvMouseClicked(MouseEvent mouseEvent) {
                 IGV.getInstance().clearSelections();
-                IGV.getInstance().repaint();
+                IGV.getInstance().repaintNamePanels();
             }
         });
     }
 
-    public void paintOffscreen(Graphics2D g, Rectangle rect) {
+    public void paintOffscreen(Graphics2D g, Rectangle rect, boolean batch) {
         paintComponent(g);
+    }
+
+    @Override
+    public int getSnapshotHeight(boolean batch) {
+        return getHeight();
     }
 }

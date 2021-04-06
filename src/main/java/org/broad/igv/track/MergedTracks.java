@@ -114,10 +114,8 @@ public class MergedTracks extends DataTrack implements ScalableTrack {
         return this.memberTracks.stream().allMatch((t) -> t.isReadyToPaint(frame));
     }
 
-
     @Override
     public synchronized void load(ReferenceFrame referenceFrame) {
-
         for (DataTrack t : memberTracks) {
             if (!t.isReadyToPaint(referenceFrame)) {
                 t.load(referenceFrame);
@@ -258,6 +256,28 @@ public class MergedTracks extends DataTrack implements ScalableTrack {
         }
     }
 
+    @Override
+    public String getAttributeValue(String attributeName) {
+        if (super.getAttributeValue(attributeName) != null) {
+            return super.getAttributeValue(attributeName);
+        } else if (memberTracks.size() > 0) {
+            String value = null;
+            for (Track track : memberTracks) {
+                String nm = track.getAttributeValue(attributeName);
+                if (nm != null) {
+                    if (value == null) {
+                        value = nm;
+                    } else if (!value.equals(nm)) {
+                        value += " / " + nm;
+                    }
+                }
+            }
+            return value;
+        } else {
+            // Should be impossible
+            return null;
+        }
+    }
 
     @Override
     public ContinuousColorScale getColorScale() {
@@ -357,6 +377,7 @@ public class MergedTracks extends DataTrack implements ScalableTrack {
         }
     }
 
+    @Override
     public void marshalXML(Document document, Element element) {
 
         super.marshalXML(document, element);
@@ -364,27 +385,28 @@ public class MergedTracks extends DataTrack implements ScalableTrack {
         if (alpha != DEFAULT_ALPHA) {
             element.setAttribute("alpha", String.valueOf(alpha));
         }
-
         for (DataTrack track : memberTracks) {
             Element trackElement = document.createElement(SessionElement.TRACK);
             track.marshalXML(document, trackElement);
             element.appendChild(trackElement);
         }
-
     }
 
     @Override
     public void unmarshalXML(Element element, Integer version) {
 
         super.unmarshalXML(element, version);
-
         if (element.hasAttribute("alpha")) {
             this.alpha = Double.valueOf(element.getAttribute("alpha"));
         }
         // Un-marshalling handled in IGVSessionReader
-
     }
 
+    @Override
+    public void dispose() {
+
+
+    }
 
     private enum ChangeTrackMethod {
         POSITIVE, NEGATIVE

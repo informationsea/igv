@@ -32,11 +32,10 @@ package org.broad.igv.batch;
 
 import org.apache.log4j.Logger;
 import org.broad.igv.Globals;
-import org.broad.igv.event.DataLoadedEvent;
-import org.broad.igv.event.IGVEventBus;
-import org.broad.igv.event.IGVEventObserver;
 import org.broad.igv.feature.Locus;
+import org.broad.igv.feature.Range;
 import org.broad.igv.feature.RegionOfInterest;
+import org.broad.igv.feature.Strand;
 import org.broad.igv.feature.genome.GenomeManager;
 import org.broad.igv.google.Ga4ghAPIHelper;
 import org.broad.igv.google.OAuthUtils;
@@ -60,8 +59,6 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.List;
 import java.util.*;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 
 public class CommandExecutor {
 
@@ -69,11 +66,11 @@ public class CommandExecutor {
 
     private File snapshotDirectory;
     private IGV igv;
-    private int sleepInterval = 2000;
+    private int sleepInterval = 0; //2000;
 
 
-    public CommandExecutor() {
-        igv = IGV.getInstance();
+    public CommandExecutor(IGV igv) {
+        this.igv = igv;
     }
 
     private List<String> getArgs(String[] tokens) {
@@ -93,14 +90,11 @@ public class CommandExecutor {
 
         String result = "OK";
 
-
-        System.out.println();
         log.debug("Executing: " + command);
         try {
             if (args.size() == 0) {
                 return "Empty command string";
             }
-
 
             String cmd = args.get(0).toLowerCase();
             String param1 = args.size() > 1 ? args.get(1) : null;
@@ -108,15 +102,12 @@ public class CommandExecutor {
             String param3 = args.size() > 3 ? args.get(3) : null;
             String param4 = args.size() > 4 ? args.get(4) : null;
 
-
             if (cmd.equalsIgnoreCase("echo")) {
                 result = cmd;
-            } else if (cmd.equalsIgnoreCase("gotoimmediate")) {
-                return gotoImmediate(args);
-            } else if (cmd.equalsIgnoreCase("goto")) {
+            } else if (cmd.equalsIgnoreCase("gotoimmediate") || cmd.equalsIgnoreCase("goto")) {
                 result = goto1(args);
-            } else if (cmd.equalsIgnoreCase("gototrack")) {
-                boolean res = IGV.getInstance().scrollToTrack(param1);
+            } else if (cmd.equalsIgnoreCase("scrolltotrack") || cmd.equalsIgnoreCase("gototrack")) {
+                boolean res = this.igv.scrollToTrack(param1);
                 result = res ? "OK" : String.format("Error: Track %s not found", param1);
             } else if (cmd.equalsIgnoreCase("snapshotdirectory")) {
                 result = setSnapshotDirectory(param1);
@@ -132,12 +123,28 @@ public class CommandExecutor {
             } else if (cmd.equalsIgnoreCase("region")) {
                 defineRegion(param1, param2, param3, param4);
             } else if (cmd.equalsIgnoreCase("sort")) {
-                sort(param1, param2, param3, param4);
+                result = sort(param1, param2, param3, param4);
             } else if (cmd.equalsIgnoreCase("group")) {
-                group(param1, param2);
+                result = group(param1, param2);
+            } else if (cmd.equalsIgnoreCase("colorBy")) {
+                result = colorBy(param1, param2);
             } else if (cmd.equalsIgnoreCase("collapse")) {
                 String trackName = parseTrackName(param1);
                 igv.setTrackDisplayMode(Track.DisplayMode.COLLAPSED, trackName);
+            } else if (cmd.equalsIgnoreCase("setSequenceStrand")) {
+                igv.setSequenceTrackStrand(Strand.fromString(param1));
+            } else if (cmd.equalsIgnoreCase("setSequenceShowTranslation")) {
+                boolean showTranslation;
+                try {
+                    if (param1.equalsIgnoreCase("true") || param1.equalsIgnoreCase("false")) {
+                        showTranslation = Boolean.valueOf(param1);
+                    } else {
+                        return "ERROR: showTranslation value (" + param1 + ")is not 'true' or 'false'.";
+                    }
+                } catch (IllegalArgumentException e) {
+                    return e.getMessage();
+                }
+                igv.setSequenceShowTranslation(showTranslation);
             } else if (cmd.equalsIgnoreCase("expand")) {
                 String trackName = parseTrackName(param1);
                 igv.setTrackDisplayMode(Track.DisplayMode.EXPANDED, trackName);
@@ -187,7 +194,7 @@ public class CommandExecutor {
                 return result;
             }
 
-            igv.doRefresh();
+            igv.repaint();
 
             if (RuntimeUtils.getAvailableMemoryFraction() < 0.5) {
                 log.debug("Running garbage collection");
@@ -201,14 +208,12 @@ public class CommandExecutor {
             }
             log.debug("Finished sleeping");
 
-        } catch (
-                IOException e
-        ) {
+        } catch (IOException e) {
             log.error(e);
             result = "Error: " + e.getMessage();
         }
 
-        log.info(result);
+        log.debug(result);
 
         return result;
     }
@@ -217,7 +222,7 @@ public class CommandExecutor {
         if (trackName == null) return "Error: NULL TRACK NAME";
         for (Track track : igv.getAllTracks()) {
             if (track.getName().equals(trackName)) {
-                igv.removeTracks(Arrays.asList(track));
+                igv.deleteTracks(Arrays.asList(track));
                 return "OK";
             }
         }
@@ -276,12 +281,14 @@ public class CommandExecutor {
         DataRange.Type scaleType = logScale == true ?
                 DataRange.Type.LOG :
                 DataRange.Type.LINEAR;
+        List<Track> affectedTracks = new ArrayList<>();
         for (Track track : tracks) {
             if (trackName == null || trackName.equalsIgnoreCase(track.getName())) {
                 track.getDataRange().setType(scaleType);
+                affectedTracks.add(track);
             }
         }
-        IGV.getInstance().revalidateTrackPanels();
+        igv.repaint(affectedTracks);
         return "OK";
     }
 
@@ -585,59 +592,28 @@ public class CommandExecutor {
             igv.restoreSessionSynchronous(sessionPath, locus, merge);
         }
 
-        final Future loadTask = igv.loadTracks(fileLocators);
+        igv.loadTracks(fileLocators);
 
         if (locus != null && !locus.equals("null")) {
             igv.goToLocus(locus);
             //If locus is a single base, we sort by base
             String[] tokens = locus.split(":", 2);
             if (tokens.length == 2) {
-                String chr = tokens[0];
                 try {
                     int pos = Integer.parseInt(tokens[1].replace(",", ""));
                     if (pos >= 0 && sort == null) sort = "base";
-
                 } catch (Exception e) {
                     //pass
                 }
             }
-
         }
 
         if (sort != null) {
-            submitPerformSort(loadTask, sort, sortTag);
+            final AlignmentTrack.SortOption sortOption = getAlignmentSortOption(sort);
+            igv.sortAlignmentTracks(sortOption, sortTag);
         }
 
         return CommandListener.OK;
-    }
-
-    private void submitPerformSort(final Future loadTask, final String sort, final String sortTag) {
-        final AlignmentTrack.SortOption sortOption = getAlignmentSortOption(sort);
-        Runnable runnable = new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    //We need to wait until the track is loaded. If loadTask is null,
-                    //it was loaded synchronously
-                    if (loadTask != null) {
-                        Object res = loadTask.get();
-                    }
-                    //Thought we were done waiting, huh? Guess again
-                    //Alignment tracks load alignment data asynchronously from the track
-
-                    //Since sorting applies to all tracks, we only need to have 1 handler
-                    //TODO -- the use of the bus here is, essentially, an attempt to simulate a promise,  do().then()
-                    IGVEventBus.getInstance().subscribe(DataLoadedEvent.class, new SortAlignmentsHandler(igv, sortOption, sortTag));
-
-                } catch (InterruptedException e) {
-                    log.error(e.getMessage(), e);
-                } catch (ExecutionException e) {
-                    log.error(e.getMessage(), e);
-                }
-
-            }
-        };
-        LongRunningTask.submit(runnable);
     }
 
     /**
@@ -787,58 +763,84 @@ public class CommandExecutor {
     }
 
 
-    private void sort(String sortArg, String locusString, String param3, String param4) {
+    private String sort(String sortArg, String param2, String param3, String param4) {
 
         RegionScoreType regionSortOption = getRegionSortOption(sortArg);
-        String tag = "";
         if (regionSortOption != null) {
+            // Segmented copy number
             RegionOfInterest roi = null;
-            if (locusString != null) {
-                Locus locus = Locus.fromString(locusString);
+            if (param2 != null) {
+                Locus locus = Locus.fromString(param2);
                 if (locus != null) {
                     int start = Math.max(0, locus.getStart() - 1);
                     roi = new RegionOfInterest(locus.getChr(), start, locus.getEnd(), "");
                 }
             }
-            igv.sortByRegionScore(roi, regionSortOption, FrameManager.getDefaultFrame());
-
+            igv.sortByRegionScore(roi, regionSortOption, FrameManager.getFirstFrame());
+            return "OK";
         } else {
-            Double location = null;
-            if (param3 != null && param3.trim().length() > 0) {
-                try {
-                    location = new Double(param3.replace(",", ""));
-                    tag = param4;
-                } catch (NumberFormatException e) {
-                    tag = param3;
-                }
-            } else if (locusString != null && locusString.trim().length() > 0) {
-                try {
-                    location = new Double(locusString.replace(",", ""));
-                    tag = param4;
-                } catch (NumberFormatException e) {
-                    tag = param3;
-                }
+            // Alignments
+            String tag = null;
+            String locusString = null;
+            if (sortArg.equalsIgnoreCase("tag")) {
+                tag = param2;
+                locusString = param3;
+            } else {
+                locusString = param2;
             }
 
-            //Convert from 1-based to 0-based
-            if (location != null) location--;
-
+            Double location = null;
+            if (locusString != null && locusString.trim().length() > 0) {
+                // Apparently there have been 2 conventions for "location", a full locus string and a base position
+                // Try locus string first
+                Locus locus = Locus.fromString(locusString);
+                if (locus != null) {
+                    location = (double) locus.getStart();
+                } else {
+                    try {
+                        location = Double.valueOf(locusString.replace(",", ""));
+                        if (location != null) location--;
+                    } catch (NumberFormatException e) {
+                        return "Error parsing location: " + locusString;
+                    }
+                }
+            }
             igv.sortAlignmentTracks(getAlignmentSortOption(sortArg), location, tag);
-
+            return "OK";
         }
-        igv.revalidateTrackPanels();
     }
 
-    private void group(String groupArg, String tagArg) {
-        igv.groupAlignmentTracks(getAlignmentGroupOption(groupArg), tagArg, null);
-        UIUtilities.invokeAndWaitOnEventThread(() -> igv.revalidateTrackPanels());
+
+    private String group(String groupArg, String tagArg) {
+        final AlignmentTrack.GroupOption groupOption = getAlignmentGroupOption(groupArg);
+        Range r = null;
+        if (groupOption == AlignmentTrack.GroupOption.BASE_AT_POS) {
+            if (tagArg == null) {
+                return "Error: position is required";
+            } else {
+                try {
+                    Locus locus = Locus.fromString(tagArg);
+                    r = new Range(locus.getChr(), locus.getStart(), locus.getEnd());
+                } catch (Exception e) {
+                    return "Error: invalid position: " + tagArg;
+                }
+            }
+        }
+        igv.groupAlignmentTracks(groupOption, tagArg, r);
+        return "OK";
+    }
+
+    private String colorBy(String colorArg, String tagArg) {
+        final AlignmentTrack.ColorOption colorOption = AlignmentTrack.ColorOption.valueOf(colorArg.toUpperCase());
+        igv.colorAlignmentTracks(colorOption, tagArg);
+        return "OK";
     }
 
 
     private String createSnapshot(String filename, String region) {
 
         if (filename == null) {
-            String locus = FrameManager.getDefaultFrame().getFormattedLocusString();
+            String locus = FrameManager.getCurrentLocusString();
             filename = locus.replaceAll(":", "_").replace("-", "_") + ".png";
         } else {
             filename = StringUtils.stripQuotes(filename);
@@ -863,9 +865,9 @@ public class CommandExecutor {
 
         Component target = null;
         if (region == null || region.trim().length() == 0) {
-            target = IGV.getInstance().getContentPane().getMainPanel();
+            target = this.igv.getContentPane().getMainPanel();
         } else if ("trackpanels".equalsIgnoreCase(region)) {
-            target = IGV.getInstance().getMainPanel().getCenterSplitPane();
+            target = this.igv.getMainPanel().getCenterSplitPane();
         }
 
         if (target == null) {
@@ -875,8 +877,8 @@ public class CommandExecutor {
         }
 
         try {
-            return IGV.getInstance().createSnapshotNonInteractive(target, file, true);
-        } catch (IOException e) {
+            return this.igv.createSnapshotNonInteractive(target, file, true);
+        } catch (Exception e) {
             log.error(e);
             return e.getMessage();
         }
@@ -885,10 +887,9 @@ public class CommandExecutor {
 
     private static void createParents(File outputFile) {
         File parent = outputFile.getParentFile();
-        if (!parent.exists()) {
+        if (parent != null && !parent.exists()) {
             parent.mkdirs();
         }
-
     }
 
     private static RegionScoreType getRegionSortOption(String str) {
@@ -923,6 +924,8 @@ public class CommandExecutor {
             return AlignmentTrack.SortOption.MATE_CHR;
         } else if (str.equalsIgnoreCase("readOrder")) {
             return AlignmentTrack.SortOption.READ_ORDER;
+        } else if (str.equalsIgnoreCase("readname")) {
+            return AlignmentTrack.SortOption.READ_NAME;
         } else {
             try {
                 return AlignmentTrack.SortOption.valueOf(str.toUpperCase());
@@ -954,32 +957,8 @@ public class CommandExecutor {
                 log.error("Unknown group by option: " + str);
                 return AlignmentTrack.GroupOption.NONE;
             }
-
-        }
-
-    }
-
-    private static class SortAlignmentsHandler implements IGVEventObserver {
-
-        private IGV igv = null;
-        private AlignmentTrack.SortOption sortOption;
-        private String sortTag;
-
-        SortAlignmentsHandler(IGV igv, AlignmentTrack.SortOption sortOption, String sortTag) {
-            this.igv = igv;
-            this.sortOption = sortOption;
-            this.sortTag = sortTag;
-
-            IGVEventBus.getInstance().subscribe(DataLoadedEvent.class, this);
-        }
-
-
-        @Override
-        public void receiveEvent(Object event) {
-            boolean sorted = igv.sortAlignmentTracks(sortOption, sortTag);
-            if (sorted) {
-                IGVEventBus.getInstance().unsubscribe(this);
-            }
         }
     }
+
+
 }

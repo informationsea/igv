@@ -133,7 +133,7 @@ public class FeatureTrack extends AbstractTrack implements IGVEventObserver {
      * @param name
      */
     public FeatureTrack(String id, String name) {
-        super(id, name);
+        super(null, id, name);
         setSortable(false);
     }
 
@@ -152,7 +152,7 @@ public class FeatureTrack extends AbstractTrack implements IGVEventObserver {
      * @api
      */
     public FeatureTrack(String id, String name, FeatureSource source) {
-        super(id, name);
+        super(null, id, name);
         init(source, null);
         setSortable(false);
     }
@@ -181,7 +181,7 @@ public class FeatureTrack extends AbstractTrack implements IGVEventObserver {
 
 
     public FeatureTrack(ResourceLocator locator, String id, FeatureSource source) {
-        super(locator, id);
+        super(locator, id, locator.getTrackName());
         init(source, locator.getPath());
     }
 
@@ -417,7 +417,7 @@ public class FeatureTrack extends AbstractTrack implements IGVEventObserver {
 
             StringBuffer buf = new StringBuffer();
             boolean firstFeature = true;
-            int maxNumber = 10;
+            int maxNumber = 100;
             int n = 1;
             for (Feature feature : allFeatures) {
                 if (feature != null && feature instanceof IGVFeature) {
@@ -600,7 +600,7 @@ public class FeatureTrack extends AbstractTrack implements IGVEventObserver {
                             //select the appropriate row
                             setSelectedFeatureRowIndex(i);
                         }
-                        IGV.getInstance().doRefresh();
+                        repaint();
                         break;
                     }
                 }
@@ -719,9 +719,6 @@ public class FeatureTrack extends AbstractTrack implements IGVEventObserver {
                 if (c != null && end < c.getLength()) expandedEnd = Math.min(c.getLength(), expandedEnd);
             }
 
-            if (source == null) {
-                System.out.println();
-            }
             Iterator<Feature> iter = source.getFeatures(chr, expandedStart, expandedEnd);
 
             if (iter == null) {
@@ -758,7 +755,7 @@ public class FeatureTrack extends AbstractTrack implements IGVEventObserver {
                 lastFeatureMode = null;
             }
             renderFeatures(context, renderRect);
-        } else {
+        } else if (coverageRenderer != null) {
             if (getDisplayMode() != DisplayMode.COLLAPSED) {
                 // An ugly hack, but we want to prevent this for vcf tracks
                 if (!(this instanceof VariantTrack)) {
@@ -792,7 +789,6 @@ public class FeatureTrack extends AbstractTrack implements IGVEventObserver {
     protected void renderCoverage(RenderContext context, Rectangle inputRect) {
 
         final String chr = context.getChr();
-
         List<LocusScore> scores = (source != null && chr.equals(Globals.CHR_ALL)) ?
                 source.getCoverageScores(chr, (int) context.getOrigin(),
                         (int) context.getEndLocation(), context.getZoom()) :
@@ -866,15 +862,13 @@ public class FeatureTrack extends AbstractTrack implements IGVEventObserver {
                         "<br>Unload track " + getName() + "?");
                 if (unload) {
                     Collection<Track> tmp = Arrays.asList((Track) this);
-                    IGV.getInstance().removeTracks(tmp);
-                    IGV.getInstance().doRefresh();
+                    IGV.getInstance().deleteTracks(tmp);
+                    IGV.getInstance().repaint();
                 } else {
                     fatalLoadError = false;
                 }
             }
         }
-
-
     }
 
     protected void renderFeatureImpl(RenderContext context, Rectangle inputRect, PackedFeatures packedFeatures) {

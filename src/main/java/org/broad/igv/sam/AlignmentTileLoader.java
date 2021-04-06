@@ -44,6 +44,7 @@ import org.broad.igv.util.RuntimeUtils;
 import javax.swing.*;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
+import java.text.DecimalFormat;
 import java.util.*;
 
 import static org.broad.igv.prefs.Constants.*;
@@ -56,6 +57,8 @@ import static org.broad.igv.prefs.Constants.*;
 public class AlignmentTileLoader implements IGVEventObserver {
 
     private static Logger log = Logger.getLogger(AlignmentTileLoader.class);
+
+    static DecimalFormat df = new DecimalFormat("###,###,###");
 
     private static Set<WeakReference<AlignmentTileLoader>> activeLoaders = Collections.synchronizedSet(new HashSet());
 
@@ -103,7 +106,7 @@ public class AlignmentTileLoader implements IGVEventObserver {
         return reader.getSequenceNames();
     }
 
-    public CloseableIterator<Alignment> iterator() {
+    public CloseableIterator<Alignment> iterator() throws IOException {
         return reader.iterator();
     }
 
@@ -128,7 +131,7 @@ public class AlignmentTileLoader implements IGVEventObserver {
         boolean filterSecondaryAlignments = prefMgr.getAsBoolean(SAM_FILTER_SECONDARY_ALIGNMENTS);
         boolean filterSupplementaryAlignments = prefMgr.getAsBoolean(SAM_FILTER_SUPPLEMENTARY_ALIGNMENTS);
         ReadGroupFilter filter = ReadGroupFilter.getFilter();
-        boolean showDuplicates = prefMgr.getAsBoolean(SAM_SHOW_DUPLICATES) || !prefMgr.getAsBoolean(SAM_FILTER_DUPLICATES);
+        boolean filterDuplicates = prefMgr.getAsBoolean(SAM_FILTER_DUPLICATES);
         int qualityThreshold = prefMgr.getAsInt(SAM_QUALITY_THRESHOLD);
         int alignmentScoreTheshold = prefMgr.getAsInt(SAM_ALIGNMENT_SCORE_THRESHOLD);
 
@@ -136,12 +139,10 @@ public class AlignmentTileLoader implements IGVEventObserver {
 
         AlignmentTile t = new AlignmentTile(start, end, spliceJunctionHelper, downsampleOptions, bisulfiteContext, reducedMemory);
 
-
         //assert (tiles.size() > 0);
         if (corruptIndex) {
             return t;
         }
-
 
         CloseableIterator<Alignment> iter = null;
 
@@ -159,7 +160,10 @@ public class AlignmentTileLoader implements IGVEventObserver {
                 IGV.getInstance().enableStopButton(true);
             }
 
+            MessageUtils.setStatusBarMessage("Reading...");
+
             iter = reader.query(chr, start, end, false);
+            MessageUtils.setStatusBarMessage("Iterating...");
 
             while (iter != null && iter.hasNext()) {
 
@@ -168,11 +172,6 @@ public class AlignmentTileLoader implements IGVEventObserver {
                 }
 
                 Alignment record = iter.next();
-
-                if (readStats != null) {
-                    readStats.addAlignment(record);
-                }
-                ;
 
                 // Set mate sequence of unmapped mates
                 // Put a limit on the total size of this collection.
@@ -218,7 +217,8 @@ public class AlignmentTileLoader implements IGVEventObserver {
                 }
 
 
-                if (!record.isMapped() || (!showDuplicates && record.isDuplicate()) ||
+                if (!record.isMapped() ||
+                        (filterDuplicates && record.isDuplicate()) ||
                         (filterFailedReads && record.isVendorFailedRead()) ||
                         (filterSecondaryAlignments && !record.isPrimary()) ||
                         (filterSupplementaryAlignments && record.isSupplementary()) ||
@@ -228,17 +228,21 @@ public class AlignmentTileLoader implements IGVEventObserver {
                 }
 
                 // Alignment score (optional tag)
-                if(alignmentScoreTheshold > 0) {
+                if (alignmentScoreTheshold > 0) {
 
                     Object alignmentScoreObj = record.getAttribute("AS");
 
-                    if(alignmentScoreObj != null) {
+                    if (alignmentScoreObj != null) {
                         int as = ((Number) alignmentScoreObj).intValue();
-                        if(as < alignmentScoreTheshold) {
+                        if (as < alignmentScoreTheshold) {
                             continue;
                         }
                     }
 
+                }
+
+                if (readStats != null) {
+                    readStats.addAlignment(record);
                 }
 
                 t.addRecord(record, reducedMemory);
@@ -247,8 +251,10 @@ public class AlignmentTileLoader implements IGVEventObserver {
                 int interval = Globals.isTesting() ? 100000 : 1000;
                 if (alignmentCount % interval == 0) {
                     String msg = "Reads loaded: " + alignmentCount;
+                    //System.out.println(msg);
                     MessageUtils.setStatusBarMessage(msg);
                     if (memoryTooLow()) {
+                        Runtime.getRuntime().gc();
                         cancelReaders();
                         t.finish();
                         return t;
@@ -280,11 +286,6 @@ public class AlignmentTileLoader implements IGVEventObserver {
                     stats.computeExpectedOrientation();
                 }
             }
-
-            if (readStats != null) {
-                readStats.compute();
-            }
-
 
             // Clean up any remaining unmapped mate sequences
             for (String mappedMateName : mappedMates.getKeys()) {
@@ -340,7 +341,7 @@ public class AlignmentTileLoader implements IGVEventObserver {
     }
 
 
-    private static synchronized boolean memoryTooLow() {
+    private static boolean memoryTooLow() {
         if (RuntimeUtils.getAvailableMemoryFraction() < 0.2) {
             System.gc();
             if (RuntimeUtils.getAvailableMemoryFraction() < 0.2) {
@@ -383,7 +384,7 @@ public class AlignmentTileLoader implements IGVEventObserver {
     @Override
     public void receiveEvent(Object event) {
         if (event instanceof StopEvent) {
-            System.out.println("Canceled");
+            log.info("Canceled");
             cancel = true;
 
             reader.cancelQuery();

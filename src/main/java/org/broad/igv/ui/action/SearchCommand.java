@@ -39,25 +39,25 @@ import org.broad.igv.lists.GeneList;
 import org.broad.igv.prefs.Constants;
 import org.broad.igv.prefs.PreferencesManager;
 import org.broad.igv.ui.IGV;
+import org.broad.igv.ui.panel.FrameManager;
 import org.broad.igv.ui.panel.ReferenceFrame;
+import org.broad.igv.ui.util.IGVMouseInputAdapter;
 import org.broad.igv.ui.util.MessageUtils;
+import org.broad.igv.util.HttpUtils;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.util.*;
+import java.io.IOException;
+import java.net.URL;
 import java.util.List;
+import java.util.*;
 
 /**
  * A class for performing search actions.  The class takes a view context and
  * search string as parameters.   The search string can be either
  * (a) a feature (e.g. gene),  or
  * (b) a locus string in the UCSC form,  e.g. chr1:100,000-200,000
- * <p/>
- * Note:  Currently the only recognized features are genes
- * <p/>
- * Custom searchers can be registered, see {@link #registerNamedFeatureSearcher(org.broad.igv.dev.api.NamedFeatureSearcher)}
  *
  * @author jrobinso
  */
@@ -122,34 +122,15 @@ public class SearchCommand {
 
 
     public void execute() {
-
-        if (log.isDebugEnabled()) {
-            log.debug("Run search: " + searchString);
-        }
-
         List<SearchResult> results = runSearch(searchString);
-        if (askUser) {
-            results = askUserFeature(results);
-            if (results == null) {
-                if (log.isDebugEnabled()) {
-                    log.debug("Multiple results, show cancelled: " + searchString);
-                }
-                return;
-            }
-        }
-
         showSearchResult(results);
-
-        if (log.isDebugEnabled()) {
-            log.debug("End search: " + searchString);
-        }
     }
 
     /**
-     * Given a string, search for the appropriate data to show the user.
+     * Given a string, search for the appropriate locus or loci.
      * Different syntaxes are accepted.
      * <p/>
-     * In general, whitespace delimited tokens are treated separately and each are shown.
+     * In general, space delimited tokens are treated separately and each are shown.
      * There is 1 exception to this. A locus of form chr1   1   10000 will be treated the same
      * as chr1:1-10000. Only one entry of this form can be entered, chr1    1   10000 chr2:1-1000 will
      * not be recognized.
@@ -158,12 +139,12 @@ public class SearchCommand {
      *                     Partial matches to a feature name (EG) will return multiple results, and
      *                     ask the user which they want.
      * @return result
-     *         List<SearchResult> describing the results of the search. Will never
-     *         be null, field type will equal ResultType.ERROR if something went wrong.
+     * List<SearchResult> describing the results of the search. Will never
+     * be null, field type will equal ResultType.ERROR if something went wrong.
      */
     public List<SearchResult> runSearch(String searchString) {
 
-        List<SearchResult> results = new ArrayList<SearchResult>();
+        List<SearchResult> results = new ArrayList<>();
 
         searchString = searchString.replace("\"", "");
 
@@ -176,7 +157,14 @@ public class SearchCommand {
         // Space delimited?
         String[] tokens = searchString.split("\\s+");
         for (String s : tokens) {
-            results.addAll(parseToken(s));
+            SearchResult result = parseToken(s);
+            if(result != null) {
+                results.add(result);
+            } else {
+                SearchResult unknownResult = new SearchResult();
+                unknownResult.setMessage("Unknown search term: " + s);
+                results.add(unknownResult);
+            }
         }
 
         if (results.size() == 0) {
@@ -191,8 +179,7 @@ public class SearchCommand {
     public void showSearchResult(List<SearchResult> results) {
         int origZoom = referenceFrame.getZoom();
         if (results == null || results.size() == 0) {
-            results = new ArrayList<SearchResult>();
-
+            results = new ArrayList<>();
             results.add(new SearchResult());
         }
 
@@ -200,7 +187,12 @@ public class SearchCommand {
         boolean success = true;
         String message = "Invalid search string: " + searchString;
 
+        boolean isGeneListMode = FrameManager.isGeneListMode();
+        boolean resetFrames = false;
+
         if (results.size() == 1) {
+            resetFrames = isGeneListMode;  // From gene list -> single locus
+
             SearchResult result = results.get(0);
             if (result.type != ResultType.ERROR) {//FrameManager.isGeneListMode()) {
                 IGV.getInstance().getSession().setCurrentGeneList(null);
@@ -224,22 +216,26 @@ public class SearchCommand {
                 }
             }
         } else {
-            List<String> loci = new ArrayList<String>(results.size());
-            message = "";
+            resetFrames = true;  // New set of loci
+            List<String> loci = new ArrayList<>(results.size());
+            message = "<html>";
             for (SearchResult res : results) {
                 if (res.type != ResultType.ERROR) {
                     loci.add(res.getLocus());
                 } else {
-                    message = message + res.getMessage() + "\n";
+                    message = message + res.getMessage() + "<br>";
                     showMessage = true;
                 }
             }
             GeneList geneList = new GeneList("", loci, false);
             IGV.getInstance().getSession().setCurrentGeneList(geneList);
         }
-
-        IGV.getInstance().resetFrames();
-
+        if(resetFrames) {
+            IGV.getInstance().resetFrames();
+        }
+        else {
+            IGV.getInstance().repaint();
+        }
 
         if (success && recordHistory) {
             IGV.getInstance().getSession().getHistory().push(searchString, origZoom);
@@ -274,54 +270,6 @@ public class SearchCommand {
         return options.toArray();
     }
 
-    /**
-     * Display a dialog asking user which search result they want
-     * to display. Number of results are limited to SEARCH_LIMIT.
-     * The user can select multiple options, in which case all
-     * are displayed.
-     *
-     * @param results
-     * @return SearchResults which the user has selected.
-     *         Will be null if cancelled
-     */
-    private List<SearchResult> askUserFeature(List<SearchResult> results) {
-
-        Object[] list = getSelectionList(results, true);
-        JList ls = new JList(list);
-        ls.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        //ls.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-
-        final JOptionPane pane = new JOptionPane(ls, JOptionPane.PLAIN_MESSAGE, JOptionPane.OK_CANCEL_OPTION);
-        final Dialog dialog = pane.createDialog("Features");
-        dialog.setModalityType(Dialog.ModalityType.APPLICATION_MODAL);
-
-        //On double click, show that option
-        ls.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() >= 2) {
-                    dialog.setVisible(false);
-                    pane.setValue(JOptionPane.OK_OPTION);
-                    dialog.dispose();
-                }
-            }
-        });
-
-        dialog.setVisible(true);
-
-        int resp = (Integer) pane.getValue();
-
-        List<SearchResult> val = null;
-        if (resp == JOptionPane.OK_OPTION) {
-            int[] selected = ls.getSelectedIndices();
-            val = new ArrayList<SearchResult>(selected.length);
-            for (int ii = 0; ii < selected.length; ii++) {
-                val.add(ii, results.get(selected[ii]));
-            }
-        }
-        return val;
-
-    }
 
     /**
      * Check token type using regex.
@@ -332,27 +280,23 @@ public class SearchCommand {
      */
     Set<ResultType> checkTokenType(String token) {
         token = token.trim();
-
-
-        Set<ResultType> possibles = new HashSet<ResultType>();
+        Set<ResultType> possibles = new HashSet<>();
         for (ResultType type : tokenMatchers.keySet()) {
             if (token.matches(tokenMatchers.get(type))) { //note: entire string must match
                 possibles.add(type);
             }
         }
-
         return possibles;
     }
 
     /**
-     * Determine searchResult for white-space delimited search query.
+     * Determine searchResult for string token.
      *
      * @param token
      * @return searchResult
      */
-    private List<SearchResult> parseToken(String token) {
+    private SearchResult parseToken(String token) {
 
-        List<SearchResult> results = new ArrayList<SearchResult>();
         List<NamedFeature> features;
 
         //Guess at token type via regex.
@@ -363,8 +307,7 @@ public class SearchCommand {
             //Check if a full or partial locus string
             result = calcChromoLocus(token);
             if (result.type != ResultType.ERROR) {
-                results.add(result);
-                return results;
+                return result;
             }
         }
 
@@ -407,28 +350,42 @@ public class SearchCommand {
                 //The +2 accounts for centering on the center of the amino acid, not beginning
                 //and converting from 0-based to 1-based (which getStartEnd expects)
                 int[] locs = getStartEnd("" + (genomePos + 2));
-                result = new SearchResult(ResultType.LOCUS, feat.getChr(), locs[0], locs[1]);
-                results.add(result);
-
+                return new SearchResult(ResultType.LOCUS, feat.getChr(), locs[0], locs[1]);
             }
-            return results;
-        }
-
-        if (types.contains(ResultType.FEATURE)) {
+        } else if (types.contains(ResultType.FEATURE)) {
             //Check if we have an exact name for the feature name
-            NamedFeature feat = FeatureDB.getFeature(token.toUpperCase().trim());
+            NamedFeature feat = searchFeatureDBs(token);
             if (feat != null) {
-                results.add(new SearchResult(feat));
-                return results;
+                return new SearchResult(feat);
             }
-
         }
+        return null;
+    }
 
-        result = new SearchResult();
-        result.setMessage("Invalid token: " + token);
-        results.add(result);
-        return results;
-
+    private NamedFeature searchFeatureDBs(String str) {
+        NamedFeature feat = FeatureDB.getFeature(str.toUpperCase().trim());
+        if (feat != null) {
+            return feat;
+        } else {
+            try {
+                String tmp = "https://igv.org/genomes/locus.php?genome=$GENOME$&name=$FEATURE$";
+                String genomeID = GenomeManager.getInstance().getGenomeId();
+                if (genomeID != null) {
+                    URL url = new URL(tmp.replace("$GENOME$", genomeID).replace("$FEATURE$", str));
+                    String r = HttpUtils.getInstance().getContentsAsString(url);
+                    String[] t = Globals.whitespacePattern.split(r);
+                    if (t.length > 2) {
+                        Locus l = Locus.fromString(t[1]);
+                        String chr = genome == null ? l.getChr() : genome.getCanonicalChrName(l.getChr());
+                        feat = new BasicFeature(chr, l.getStart(), l.getEnd());
+                        return feat;
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Search webservice error", e);
+            }
+        }
+        return null;
     }
 
 
@@ -472,6 +429,11 @@ public class SearchCommand {
             }
         }
 
+        // Show the "All chromosomes" view if the search string is "*"
+        if (chr.equals("*") || chr.toLowerCase().equals("all")) {
+            return new SearchResult(ResultType.CHROMOSOME, Globals.CHR_ALL, 0, 1);
+        }
+
         //startEnd will have coordinates if found.
         chr = genome.getCanonicalChrName(chr);
         Chromosome chromosome = genome.getChromosome(chr);
@@ -488,10 +450,9 @@ public class SearchCommand {
 
         if (chromosome != null && !searchString.equals(Globals.CHR_ALL)) {
             if (startEnd != null) {
-                if(startEnd[1] >= startEnd[0]) {
+                if (startEnd[1] >= startEnd[0]) {
                     return new SearchResult(ResultType.LOCUS, chr, startEnd[0], startEnd[1]);
-                }
-                else {
+                } else {
                     SearchResult error = new SearchResult(ResultType.ERROR, chr, startEnd[0], startEnd[1]);
                     error.setMessage("End must be greater than start");
                     return error;
@@ -505,10 +466,9 @@ public class SearchCommand {
     private void showFlankedRegion(String chr, int start, int end) {
         int flankingRegion = PreferencesManager.getPreferences().getAsInt(Constants.FLANKING_REGION);
         int delta;
-        if((end - start) == 1) {
+        if ((end - start) == 1) {
             delta = 20; // Don't show flanking region for single base jumps, use 40bp window
-        }
-        else if (flankingRegion < 0) {
+        } else if (flankingRegion < 0) {
             delta = (-flankingRegion * (end - start)) / 100;
         } else {
             delta = flankingRegion;
@@ -516,7 +476,7 @@ public class SearchCommand {
         start = Math.max(0, start - delta);
         end = end + delta;
 
-            referenceFrame.jumpTo(chr, start, end);
+        referenceFrame.jumpTo(chr, start, end);
 
     }
 
@@ -531,7 +491,7 @@ public class SearchCommand {
         try {
             String[] posTokens = posString.split("-");
             String startString = posTokens[0].replaceAll(",", "");
-            int start = Math.max(0, Integer.parseInt(startString));
+            int start = Math.max(0, Integer.parseInt(startString) - 1);
 
             // Default value for end
             int end = start + 1;
@@ -548,7 +508,7 @@ public class SearchCommand {
                 end = center + widen;
             }
 
-            return new int[]{Math.min(start, end)-1, Math.max(start, end)};
+            return new int[]{Math.min(start, end), Math.max(start, end)};
         } catch (NumberFormatException numberFormatException) {
             return null;
         }
@@ -588,7 +548,7 @@ public class SearchCommand {
             this.chr = chr;
             this.start = start;
             this.end = end;
-            this.coords = Locus.getFormattedLocusString(chr, start + 1, end);
+            this.coords = Locus.getFormattedLocusString(chr, start, end);
             this.locus = this.coords;
         }
 
@@ -688,5 +648,53 @@ public class SearchCommand {
         return results;
     }
 
+    /**
+     * Display a dialog asking user which search result they want
+     * to display. Number of results are limited to SEARCH_LIMIT.
+     * The user can select multiple options, in which case all
+     * are displayed.
+     *
+     * @param results
+     * @return SearchResults which the user has selected.
+     * Will be null if cancelled
+     */
+    private List<SearchResult> askUserFeature(List<SearchResult> results) {
+
+        Object[] list = getSelectionList(results, true);
+        JList ls = new JList(list);
+        ls.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        //ls.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+
+        final JOptionPane pane = new JOptionPane(ls, JOptionPane.PLAIN_MESSAGE, JOptionPane.OK_CANCEL_OPTION);
+        final Dialog dialog = pane.createDialog("Features");
+        dialog.setModalityType(Dialog.ModalityType.APPLICATION_MODAL);
+
+        //On double click, show that option
+        ls.addMouseListener(new IGVMouseInputAdapter() {
+            @Override
+            public void igvMouseClicked(MouseEvent e) {
+                if (e.getClickCount() >= 2) {
+                    dialog.setVisible(false);
+                    pane.setValue(JOptionPane.OK_OPTION);
+                    dialog.dispose();
+                }
+            }
+        });
+
+        dialog.setVisible(true);
+
+        int resp = (Integer) pane.getValue();
+
+        List<SearchResult> val = null;
+        if (resp == JOptionPane.OK_OPTION) {
+            int[] selected = ls.getSelectedIndices();
+            val = new ArrayList<SearchResult>(selected.length);
+            for (int ii = 0; ii < selected.length; ii++) {
+                val.add(ii, results.get(selected[ii]));
+            }
+        }
+        return val;
+
+    }
 
 }

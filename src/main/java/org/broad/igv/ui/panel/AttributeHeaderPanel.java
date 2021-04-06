@@ -25,13 +25,13 @@
 
 
 /*
-* TrackPanel.java
-*
-* Created on Sep 5, 2007, 4:09:39 PM
-*
-* To change this template, choose Tools | Templates
-* and open the template in the editor.
-*/
+ * TrackPanel.java
+ *
+ * Created on Sep 5, 2007, 4:09:39 PM
+ *
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
 
 package org.broad.igv.ui.panel;
 
@@ -42,21 +42,21 @@ import org.broad.igv.prefs.PreferencesManager;
 import org.broad.igv.track.AttributeManager;
 import org.broad.igv.ui.FontManager;
 import org.broad.igv.ui.IGV;
+import org.broad.igv.ui.util.IGVMouseInputAdapter;
 
 import javax.swing.*;
 import javax.swing.event.MouseInputAdapter;
 import java.awt.*;
 import java.awt.event.MouseEvent;
 import java.awt.geom.AffineTransform;
-import java.util.HashMap;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
 
 /**
  * @author jrobinso
  */
 public class AttributeHeaderPanel extends JPanel implements Paintable {
-    
+
     final static int MAXIMUM_FONT_SIZE = 10;
     public final static int ATTRIBUTE_COLUMN_WIDTH = 10;
     public final static int COLUMN_BORDER_WIDTH = 1;
@@ -96,7 +96,7 @@ public class AttributeHeaderPanel extends JPanel implements Paintable {
 
         if (keys != null && keys.size() > 0) {
 
-            final Graphics2D graphics2 = (Graphics2D) graphics;
+            final Graphics2D graphics2 = (Graphics2D) graphics.create();
             if (PreferencesManager.getPreferences().getAntiAliasing()) {
                 graphics2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             }
@@ -110,7 +110,7 @@ public class AttributeHeaderPanel extends JPanel implements Paintable {
                 fontSize = MAXIMUM_FONT_SIZE;
             }
             Font font = FontManager.getFont(fontSize);
-            
+
             FontMetrics fm = graphics2.getFontMetrics();
             int fontAscent = fm.getHeight();
 
@@ -132,6 +132,8 @@ public class AttributeHeaderPanel extends JPanel implements Paintable {
                 int stringOffset = 2;
                 graphics2.drawString(toDraw, stringOffset, x);
             }
+
+            graphics2.dispose();
         }
     }
 
@@ -140,10 +142,10 @@ public class AttributeHeaderPanel extends JPanel implements Paintable {
 
         setToolTipText("Click attribute heading to sort");
 
-        MouseInputAdapter listener = new MouseInputAdapter() {
+        MouseInputAdapter listener = new IGVMouseInputAdapter() {
 
             @Override
-            public void mouseClicked(MouseEvent e) {
+            public void igvMouseClicked(MouseEvent e) {
 
                 String attKey = getAttributeHeading(e.getX());
                 if (attKey != null) {
@@ -191,13 +193,45 @@ public class AttributeHeaderPanel extends JPanel implements Paintable {
         }
     }
 
-    public void paintOffscreen(Graphics2D g, Rectangle rect) {
+    public void paintOffscreen(Graphics2D g, Rectangle rect, boolean batch) {
         paintComponent(g);
-
         Color c = g.getColor();
         g.setColor(Color.darkGray);
-        g.drawRect(rect.x, rect.y, rect.width, rect.height);
+        g.drawRect(rect.x, rect.y, rect.width-1, rect.height-1);
         g.setColor(c);            //super.paintBorder(g);
+    }
 
+    @Override
+    public int getSnapshotHeight(boolean batch) {
+        return this.getHeight();
+    }
+
+    private int calculatePackWidth() {
+
+        if (!PreferencesManager.getPreferences().getAsBoolean(Constants.SHOW_ATTRIBUTE_VIEWS_KEY)) {
+            return 0;
+        }
+
+        HashSet<String> attributeKeys = new HashSet(AttributeManager.getInstance().getAttributeNames());
+        final Set<String> hiddenAttributes = IGV.getInstance().getSession().getHiddenAttributes();
+        if (hiddenAttributes != null) attributeKeys.removeAll(hiddenAttributes);
+
+        int attributeCount = attributeKeys.size();
+        int packWidth = (attributeCount) * (AttributeHeaderPanel.ATTRIBUTE_COLUMN_WIDTH +
+                AttributeHeaderPanel.COLUMN_BORDER_WIDTH) + AttributeHeaderPanel.COLUMN_BORDER_WIDTH;
+        return packWidth;
+    }
+
+    /**
+     * Method description
+     *
+     * @param x
+     * @param y
+     * @param width
+     * @param height
+     */
+    @Override
+    public void setBounds(int x, int y, int width, int height) {
+        super.setBounds(x, y, calculatePackWidth(), height);
     }
 }

@@ -261,9 +261,6 @@ public class BigWigDataSource extends AbstractDataSource implements FeatureSourc
 
     private float getValue(ZoomDataRecord rec) {
 
-        if (rec == null) {
-            System.out.println();
-        }
         float v;
         switch (windowFunction) {
             case min:
@@ -384,7 +381,7 @@ public class BigWigDataSource extends AbstractDataSource implements FeatureSourc
 
         String tmp = chrNameMap.get(chr);
         String querySeq = tmp == null ? chr : tmp;
-        BigBedIterator bedIterator = reader.getBigBedIterator(querySeq, start, chr, end, false);
+        BigBedIterator bedIterator = reader.getBigBedIterator(querySeq, start, querySeq, end, false);
         return new WrappedIterator(bedIterator);
     }
 

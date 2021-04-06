@@ -63,6 +63,7 @@ import java.awt.event.ActionListener;
 import java.io.File;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
@@ -88,7 +89,6 @@ public class CoverageTrack extends AbstractTrack implements ScalableTrack {
     public static final boolean DEFAULT_SHOW_REFERENCE = false;
 
     private float snpThreshold;
-
     private AlignmentTrack alignmentTrack;
     private AlignmentDataManager dataManager;
     private CoverageDataSource dataSource;
@@ -98,6 +98,7 @@ public class CoverageTrack extends AbstractTrack implements ScalableTrack {
     private JMenuItem dataRangeItem;
     private Genome genome;
     private boolean removed = false;
+    IGV igv;
 
     /**
      * Whether to autoscale across all ReferenceFrames
@@ -105,6 +106,8 @@ public class CoverageTrack extends AbstractTrack implements ScalableTrack {
      */
     private boolean globalAutoScale = true;
 
+    public CoverageTrack() {
+    }
 
     /**
      * Copy constructor.  Used for Sashimi plot.
@@ -117,6 +120,7 @@ public class CoverageTrack extends AbstractTrack implements ScalableTrack {
         if (track.dataSource != null) this.setDataSource(track.dataSource);
         this.snpThreshold = track.snpThreshold;
         this.prefs = track.prefs;
+        this.igv = IGV.hasInstance() ? IGV.getInstance() : null;
     }
 
     public CoverageTrack(ResourceLocator locator, String name, AlignmentTrack alignmentTrack, Genome genome) {
@@ -126,19 +130,20 @@ public class CoverageTrack extends AbstractTrack implements ScalableTrack {
         this.genome = genome;
         intervalRenderer = new IntervalRenderer();
         setMaximumHeight(40);
-
         setColor(coverageGrey);
-
         prefs = PreferencesManager.getPreferences();
         snpThreshold = prefs.getAsFloat(SAM_ALLELE_THRESHOLD);
         autoScale = DEFAULT_AUTOSCALE;
-
+        this.igv = IGV.hasInstance() ? IGV.getInstance() : null;
     }
 
-    public CoverageTrack() {
-
+    @Override
+    public String getSample() {
+        if (sampleId != null) {
+            return sampleId;    // Explicitly set sample ID (e.g. from server load XML)
+        }
+        return alignmentTrack == null ? null : alignmentTrack.getSample();
     }
-
 
     @Override
     public boolean isNumeric() {
@@ -159,7 +164,6 @@ public class CoverageTrack extends AbstractTrack implements ScalableTrack {
 
     @Override
     public boolean isReadyToPaint(ReferenceFrame frame) {
-
         if (frame.getChrName().equals(Globals.CHR_ALL) || frame.getScale() > dataManager.getMinVisibleScale()) {
             return true;   // Nothing to paint
         } else {
@@ -186,6 +190,11 @@ public class CoverageTrack extends AbstractTrack implements ScalableTrack {
     }
 
     @Override
+    public boolean isVisible() {
+        return super.isVisible() && !removed;
+    }
+
+    @Override
     public void dispose() {
         super.dispose();
         removed = true;
@@ -200,7 +209,8 @@ public class CoverageTrack extends AbstractTrack implements ScalableTrack {
 
     public void render(RenderContext context, Rectangle rect) {
 
-        if (context.getScale() > dataManager.getMinVisibleScale() && dataSource == null) {
+        int viewWindowSize = context.getReferenceFrame().getCurrentRange().getLength();
+        if (viewWindowSize > dataManager.getVisibilityWindow() && dataSource == null) {
             Rectangle visibleRect = context.getVisibleRect().intersection(rect);
             Graphics2D g = context.getGraphic2DForColor(Color.gray);
             GraphicUtils.drawCenteredText("Zoom in to see coverage.", visibleRect, g);
@@ -223,22 +233,16 @@ public class CoverageTrack extends AbstractTrack implements ScalableTrack {
 
     public void drawData(RenderContext context, Rectangle rect) {
 
-        float maxRange = PreferencesManager.getPreferences().getAsFloat(SAM_MAX_VISIBLE_RANGE);
-        float minVisibleScale = (maxRange * 1000) / 700;
-
-        if (context.getScale() < minVisibleScale && !context.getChr().equals(Globals.CHR_ALL)) {
+        int viewWindowSize = context.getReferenceFrame().getCurrentRange().getLength();
+        if (viewWindowSize < dataManager.getVisibilityWindow() && !context.getChr().equals(Globals.CHR_ALL)) {
             //Show coverage calculated from intervals if zoomed in enough
             AlignmentInterval interval = null;
             if (dataManager != null) {
-                dataManager.load(context.getReferenceFrame(), alignmentTrack.renderOptions, true);
-                interval = dataManager.getLoadedInterval(context.getReferenceFrame());
+                interval = dataManager.getLoadedInterval(context.getReferenceFrame(), true);
             }
             if (interval != null) {
-                if (interval.contains(context.getChr(), (int) context.getOrigin(), (int) context.getEndLocation())) {
-                    //if (autoScale) rescale(context.getReferenceFrame());
-                    intervalRenderer.paint(context, rect, interval.getCounts());
-                    return;
-                }
+                intervalRenderer.paint(context, rect, interval.getCounts());
+                return;
             }
         }
 
@@ -290,8 +294,8 @@ public class CoverageTrack extends AbstractTrack implements ScalableTrack {
     @Override
     public Range getInViewRange(ReferenceFrame frame) {
 
-        if (dataManager == null || frame.getScale() > dataManager.getMinVisibleScale()) {
-
+        int viewWindowSize = frame.getCurrentRange().getLength();
+        if (dataManager == null || viewWindowSize > dataManager.getVisibilityWindow()) {
             List<LocusScore> scores = getInViewScores(frame);
             if (scores != null && scores.size() > 0) {
                 float min = scores.get(0).getScore();
@@ -308,18 +312,15 @@ public class CoverageTrack extends AbstractTrack implements ScalableTrack {
             }
 
         } else {
-
             AlignmentInterval interval = dataManager.getLoadedInterval(frame);
             if (interval == null) return null;
 
             int origin = (int) frame.getOrigin();
             int end = (int) frame.getEnd() + 1;
-
             int intervalMax = interval.getMaxCount(origin, end);
 
             return new Range(0, Math.max(10, intervalMax));
         }
-
     }
 
 
@@ -790,8 +791,10 @@ public class CoverageTrack extends AbstractTrack implements ScalableTrack {
         popupMenu.addSeparator();
         addCopyDetailsItem(popupMenu, te);
 
-        popupMenu.addSeparator();
-        addShowItems(popupMenu);
+        if (alignmentTrack != null) {
+            popupMenu.addSeparator();
+            addShowItems(popupMenu);
+        }
 
         return popupMenu;
     }
@@ -854,75 +857,60 @@ public class CoverageTrack extends AbstractTrack implements ScalableTrack {
 
     public JMenuItem addSnpTresholdItem(JPopupMenu menu) {
         JMenuItem maxValItem = new JMenuItem("Set allele frequency threshold...");
-
-        maxValItem.addActionListener(new ActionListener() {
-
-            public void actionPerformed(ActionEvent e) {
-
-                String value = JOptionPane.showInputDialog("Allele frequency threshold: ", Float.valueOf(snpThreshold));
-                if (value == null) {
-                    return;
-                }
-                try {
-                    float tmp = Float.parseFloat(value);
-                    snpThreshold = tmp;
-                    IGV.getInstance().revalidateTrackPanels();
-                } catch (Exception exc) {
-                    //log
-                }
-
+        maxValItem.addActionListener(e -> {
+            String value = JOptionPane.showInputDialog("Allele frequency threshold: ", Float.valueOf(snpThreshold));
+            if (value == null) {
+                return;
+            }
+            try {
+                float tmp = Float.parseFloat(value);
+                snpThreshold = tmp;
+                repaint();
+            } catch (Exception exc) {
+                //log
             }
         });
         menu.add(maxValItem);
-
         return maxValItem;
     }
 
     public void addShowItems(JPopupMenu menu) {
 
+        final SpliceJunctionTrack spliceJunctionTrack = alignmentTrack.getSpliceJunctionTrack();
+
+        final JMenuItem item = new JCheckBoxMenuItem("Show Coverage Track");
+        item.setSelected(true);
+        item.addActionListener(e -> {
+            CoverageTrack.this.setVisible(item.isSelected());
+            IGV.getInstance().repaint(Arrays.asList(CoverageTrack.this));
+        });
+        //If this is the only track visible, disable option to hide it.
+        if (!(alignmentTrack.isVisible() ||
+                (spliceJunctionTrack != null && spliceJunctionTrack.isVisible()))) {
+            item.setEnabled(false);
+        }
+        menu.add(item);
+
+        if (spliceJunctionTrack != null) {
+            final JMenuItem junctionItem = new JCheckBoxMenuItem("Show Splice Junction Track");
+            junctionItem.setSelected(spliceJunctionTrack.isVisible());
+            junctionItem.setEnabled(!spliceJunctionTrack.isRemoved());
+            junctionItem.addActionListener(e -> {
+                spliceJunctionTrack.setVisible(junctionItem.isSelected());
+                IGV.getInstance().repaint(Arrays.asList(spliceJunctionTrack));
+            });
+            menu.add(junctionItem);
+        }
+
         if (alignmentTrack != null) {
             final JMenuItem alignmentItem = new JCheckBoxMenuItem("Show Alignment Track");
             alignmentItem.setSelected(alignmentTrack.isVisible());
             alignmentItem.setEnabled(!alignmentTrack.isRemoved());
-            alignmentItem.addActionListener(new ActionListener() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    alignmentTrack.setVisible(alignmentItem.isSelected());
-                }
+            alignmentItem.addActionListener(e -> {
+                alignmentTrack.setVisible(alignmentItem.isSelected());
+                IGV.getInstance().repaint(Arrays.asList(alignmentTrack));
             });
             menu.add(alignmentItem);
-
-            final SpliceJunctionTrack spliceJunctionTrack = alignmentTrack.getSpliceJunctionTrack();
-            if (spliceJunctionTrack != null) {
-                final JMenuItem junctionItem = new JCheckBoxMenuItem("Show Splice Junction Track");
-                junctionItem.setSelected(spliceJunctionTrack.isVisible());
-                junctionItem.setEnabled(!spliceJunctionTrack.isRemoved());
-                junctionItem.addActionListener(new ActionListener() {
-                    @Override
-                    public void actionPerformed(ActionEvent e) {
-                        spliceJunctionTrack.setVisible(junctionItem.isSelected());
-                    }
-                });
-
-                menu.add(junctionItem);
-            }
-
-            final JMenuItem coverageItem = new JMenuItem("Hide Coverage Track");
-            coverageItem.setEnabled(!isRemoved());
-            coverageItem.addActionListener(new ActionListener() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    UIUtilities.invokeOnEventThread(new Runnable() {
-
-                        public void run() {
-                            setVisible(false);
-                            if (IGV.hasInstance()) IGV.getInstance().getMainPanel().revalidate();
-
-                        }
-                    });
-                }
-            });
-            menu.add(coverageItem);
         }
     }
 
@@ -930,28 +918,24 @@ public class CoverageTrack extends AbstractTrack implements ScalableTrack {
     public void addLoadCoverageDataItem(JPopupMenu menu) {
         // Change track height by attribute
         final JMenuItem item = new JCheckBoxMenuItem("Load pre-computed coverage data...");
-        item.addActionListener(new ActionListener() {
-
-            public void actionPerformed(ActionEvent e) {
-
-                final IGVPreferences prefs = PreferencesManager.getPreferences();
-                File initDirectory = prefs.getLastTrackDirectory();
-                File file = FileDialogUtils.chooseFile("Select coverage file", initDirectory, FileDialog.LOAD);
-                if (file != null) {
-                    prefs.setLastTrackDirectory(file.getParentFile());
-                    String path = file.getAbsolutePath();
-                    if (path.endsWith(".tdf") || path.endsWith(".tdf")) {
-                        TDFReader reader = TDFReader.getReader(file.getAbsolutePath());
-                        TDFDataSource ds = new TDFDataSource(reader, 0, getName() + " coverage", genome);
-                        setDataSource(ds);
-                        IGV.getInstance().revalidateTrackPanels();
-                    } else if (path.endsWith(".counts")) {
-                        CoverageDataSource ds = new GobyCountArchiveDataSource(file);
-                        setDataSource(ds);
-                        IGV.getInstance().revalidateTrackPanels();
-                    } else {
-                        MessageUtils.showMessage("Coverage data must be in .tdf format");
-                    }
+        item.addActionListener(e -> {
+            final IGVPreferences prefs = PreferencesManager.getPreferences();
+            File initDirectory = prefs.getLastTrackDirectory();
+            File file = FileDialogUtils.chooseFile("Select coverage file", initDirectory, FileDialog.LOAD);
+            if (file != null) {
+                prefs.setLastTrackDirectory(file.getParentFile());
+                String path = file.getAbsolutePath();
+                if (path.endsWith(".tdf") || path.endsWith(".tdf")) {
+                    TDFReader reader = TDFReader.getReader(file.getAbsolutePath());
+                    TDFDataSource ds = new TDFDataSource(reader, 0, getName() + " coverage", genome);
+                    setDataSource(ds);
+                    repaint();
+                } else if (path.endsWith(".counts")) {
+                    CoverageDataSource ds = new GobyCountArchiveDataSource(file);
+                    setDataSource(ds);
+                    repaint();
+                } else {
+                    if (igv != null) MessageUtils.showMessage("Coverage data must be in .tdf format");
                 }
             }
         });
@@ -978,7 +962,7 @@ public class CoverageTrack extends AbstractTrack implements ScalableTrack {
 
     @Override
     public void unmarshalXML(Element element, Integer version) {
-
+        super.unmarshalXML(element, version);
         if (element.hasAttribute("snpThreshold")) {
             snpThreshold = Float.parseFloat(element.getAttribute("snpThreshold"));
         }

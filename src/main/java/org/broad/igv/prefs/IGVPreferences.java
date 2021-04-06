@@ -371,6 +371,14 @@ public class IGVPreferences {
         return get(GENOMES_SERVER_URL);
     }
 
+    public String getProvisioningURL() {
+        return get(PROVISIONING_URL);
+    }
+
+    public String getPortNumber() {
+        return get(PORT_NUMBER);
+    }
+
     public void overrideGenomeServerURL(String url) {
         userPreferences.put(GENOMES_SERVER_URL, url);
         overrideKeys.add(GENOMES_SERVER_URL);
@@ -406,9 +414,9 @@ public class IGVPreferences {
     /**
      * @param directory
      */
-    public void setLastSnapshotDirectory(File directory) {
+    public void setLastSnapshotDirectory(String directory) {
 
-        put(LAST_SNAPSHOT_DIRECTORY, directory.getAbsolutePath());
+        put(LAST_SNAPSHOT_DIRECTORY, directory);
     }
 
     /**
@@ -531,7 +539,6 @@ public class IGVPreferences {
 
 
     public String getRecentSessions() {
-
         return get(RECENT_SESSIONS, null);
     }
 

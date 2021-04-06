@@ -16,22 +16,26 @@ ENABLE_ANTIALIASING	Enable anti-aliasing	boolean	TRUE
 #Tracks
 IGV.chart.track.height	Default numeric track height (pixels)	integer	40
 IGV.track.height	Default feature track height (pixels)	integer	15
+TRACK_ATTRIBUTE_NAME_KEY	Sample attribute key for track names	string	null
 EXPAND_FEATURE_TRACKS	Expand feature tracks	boolean	FALSE
 NORMALIZE_COVERAGE	Normalize coverage data (.tdf files only)	boolean	FALSE
+##Heatmaps
+NO_DATA.COLOR	 No data	color	216,216,216
+NO_CALL.COLOR	 No call	color	150,150,150
 
 #Variants
 
 ##Variant Colors
 HOMREF.COLOR	Homozygous reference	color	235,235,235
-HETVAR.COLOR	Homozygous variant	color	0,0,255
-HOMVAR.COLOR	Heterozygous variant	color	0,245,255
+HOMVAR.COLOR	Homozygous variant	color	0,245,255
+HETVAR.COLOR	Heterozygous variant	color	0,0,255
 NOCALL.COLOR	No call	color	255,255,255
 AF_REF.COLOR	Allele freq - reference	color	0,0,220
 AF_VAR.COLOR	Allel freq - variant	color	255,0,0
 VARIANT_COLOR_BY_ALLELE_FREQ	Color by allele frequency (uncheck to color by allele fraction)	boolean	TRUE
 
 #Mutations
-
+info	Settings on this tab apply to TCGA  "maf" and "mut" files.
 ##Color Options
 COVER_OVERLAY_KEY	Color Mutations	boolean	TRUE
 MUTATION_INDEL_COLOR_KEY	Indel	color	0,200,0
@@ -43,9 +47,8 @@ MUTATION_TARGETED_REGION_COLOR_KEY	Targeted Region	color	236,155,43
 MUTATION_Truncating_COLOR	Truncating	color	150,0,0
 MUTATION_Non-coding_Transcript_COLOR	Non-coding Transcript	color	0,0,150
 MUTATION_Other_AA_changing_COLOR	Other AA Changing	color	0,150,150
-MUTATION_Other_likely_neutral_COLOR	Other Likely Neutralcolor	225,180,225
+MUTATION_Other_likely_neutral_COLOR	Other Likely Neutral	color	225,180,225
 MUTATION_UNKNOWN_COLOR_KEY	Unknown	color	0,180,225
-
 
 #Charts
 CHART.DRAW_TOP_BORDER	Draw top border	boolean	FALSE
@@ -60,7 +63,7 @@ CN_FREQ.DEL_THRESHOLD	CN freq deletion threshold	float	-0.1
 
 #Alignments
 
-##Track Display Options
+##Track Display
 SAM.SHOW_ALIGNMENT_TRACK	Show alignment track	boolean	TRUE
 SAM.SHOW_COV_TRACK	Show coverage track	boolean	TRUE
 SAM.SHOW_JUNCTION_TRACK	Show junction track	boolean	FALSE
@@ -72,40 +75,49 @@ SAM.MAX_LEVELS	Number of reads per window	integer	100
 
 ##Alignment Track Options
 
+SAM.COLOR_BY	Color alignments by	select NONE|READ_STRAND|FIRST_OF_PAIR_STRAND|PAIR_ORIENTATION|UNEXPECTED_PAIR|INSERT_SIZE|SAMPLE|READ_GROUP|LIBRARY|MOVIE|ZMW|BISULFITE|NOMESEQ|TAG|MAPPED_SIZE|LINK_STRAND|YC_TAG	UNEXPECTED_PAIR
+SAM.COLOR_BY_TAG	Color by TAG	string
+SAM.GROUP_OPTION	Group alignments by	select NONE|STRAND|SAMPLE|READ_GROUP|LIBRARY|FIRST_OF_PAIR_STRAND|TAG|PAIR_ORIENTATION|MATE_CHROMOSOME|SV_ALIGNMENT|SUPPLEMENTARY|BASE_AT_POS|MOVIE|ZMW|HAPLOTYPE|READ_ORDER|LINKED|PHASE
+SAM.GROUP_BY_TAG	Group by TAG	string
 SAM.MAX_VISIBLE_RANGE	Visibility range threshold (kb)	float	30	Range at which alignments become visibile
 SAM.QUALITY_THRESHOLD	Mapping quality threshold	int	0
 SAM.ALIGNMENT_SCORE_THRESHOLD	Alignment score threshold	int	0
----
-SAM.SHADE_BASE_QUALITY	Shade mismatched bases by quality	boolean	TRUE
-SAM.BASE_QUALITY_MIN	Base quality minimum	integer	5
-SAM.BASE_QUALITY_MAX	Base quality maximum	integer	20
+SAM.DISPLAY_MODE	Alignment display mode	string	EXPANDED
 ---
 SAM.SHOW_MISMATCHES	Show mismatched bases	boolean	TRUE
 SAM.SHOW_ALL_BASES	Show all bases	boolean	FALSE
----
-SAM.FLAG_LARGE_INDELS	Label indels > label threshold	boolean	TRUE
-SAM.LARGE_INSERTIONS_THRESOLD	Label threshold (bases)	integer	1
----
-SAM.HIDE_SMALL_INDEL	Hide indels < show indel threshold	boolean	FALSE
-SAM.SMALL_INDEL_BP_THRESHOLD	Show indel threshold (bases)	integer	0
----
-SAM.FLAG_CLIPPING	Flag clipping > flag clipping threshold	boolean	FALSE
-SAM.CLIPPING_THRESHOLD	Flag clipping threshold (bases)	integer	0
----
-SAM.QUICK_CONSENSUS_MODE	Quick consensus mode	boolean	FALSE
-SAM.SHOW_INSERTION_MARKERS	Show insertion markers	boolean	FALSE
----
-SAM.LINK_READS	Link alignments by tag	boolean	FALSE
-SAM.LINK_TAG	Linking tag	string	READNAME
----
 SAM.FILTER_DUPLICATES	Filter duplicate reads	boolean	TRUE
 SAM.FILTER_FAILED_READS	Filter vendor failed reads	boolean	TRUE
 SAM.FILTER_SECONDARY_ALIGNMENTS	Filter secondary alignments	boolean	FALSE
 SAM.FILTER_SUPPLEMENTARY_ALIGNMENTS	Filter supplementary alignments	boolean	FALSE
 SAM.FLAG_UNMAPPED_PAIR	Flag unmapped pairs	boolean	FALSE
-SAM.SHOW_SOFT_CLIPPED	Show soft-clipped bases	boolean	FALSE
 SAM.SHOW_CENTER_LINE	Show center line	boolean	FALSE
-SAM.HIDDEN_TAGS	Hidden SAM tags	string	SA,MD,XA,RG
+SAM.SHOW_SOFT_CLIPPED	Show soft-clipped bases	boolean	FALSE
+---
+SAM.SHADE_BASE_QUALITY	Shade mismatched bases by quality.	boolean	TRUE
+SAM.BASE_QUALITY_MIN	Maximum transparency at base quality:	integer	5
+SAM.BASE_QUALITY_MAX	No transparency above base quality:	integer	20
+---
+SAM.FLAG_LARGE_INDELS	Label indels >  threshold	boolean	TRUE
+SAM.LARGE_INSERTIONS_THRESOLD	Label threshold (bases)	integer	1
+---
+SAM.HIDE_SMALL_INDEL	Hide indels <  indel size threshold	boolean	FALSE
+SAM.SMALL_INDEL_BP_THRESHOLD	Indel size threshold (bases)	integer	0
+---
+SAM.FLAG_CLIPPING	Flag clipping > threshold	boolean	FALSE
+SAM.CLIPPING_THRESHOLD	Flag clipping threshold (bases)	integer	0
+---
+SAM.QUICK_CONSENSUS_MODE	Quick consensus mode	boolean	FALSE
+SAM.SHOW_INSERTION_MARKERS	Show insertion markers	boolean	FALSE
+---
+SAM.HIDDEN_TAGS	Hide tags in popup text (comma delimited list)	string	SA,MD,XA,RG
+---
+SAM.LINK_BY_TAGS	Tags to be used for linking alignments (comma delimited list)	string	 
+---
+SAM.MAX_SOFT_CLIP	Soft clip reference extension (reference sequence is extended by this amount to show soft  clips)	integer	1000
+---
+SAM.FILTER_ALIGNMENTS	Filter alignments by read group	boolean	FALSE
+SAM.FILTER_URL	URL or path to read group filter file	string	null
 ##Coverage Track Options
 SAM.ALLELE_THRESHOLD	Coverage allele-fraction threshold	float	0.2f
 SAM.ALLELE_USE_QUALITY	Quality weight allele fraction	boolean	TRUE
@@ -157,10 +169,6 @@ SAM.SHOW_INSERTION_MARKERS	Show insertion markers	boolean	TRUE
 SAM.LINK_READS	Link alignments by tag	boolean	FALSE
 SAM.LINK_TAG	Linking tag	string	READNAME
 
-#Cram
-CRAM.CACHE_SEQUENCES	Cache reference sequences	boolean	TRUE
-CRAM.CACHE_SIZE	Cache size (MB)	integer	500
-
 #Proxy
 PROXY.DISABLE_CHECK	Disable check for system proxy	boolean	FALSE
 PROXY.USE	Use proxy	boolean	FALSE
@@ -183,7 +191,8 @@ MASTER_RESOURCE_FILE_KEY	Data registry url	string	https://data.broadinstitute.or
 ---
 PROVISIONING.URL	OAuth provisioning URL	string	null
 ---
-BLAT_URL	Blat url	String	http://genome.cse.ucsc.edu/cgi-bin/hgBlat
+BLAT_SERVER_TYPE	Blat server type	select UCSC|WEB_BLAT	UCSC
+BLAT_URL	Blat url	String	https://genome.cse.ucsc.edu/cgi-bin/hgBlat
 ---
 TOOLTIP.INITIAL_DELAY	Tooltip inital delay (ms)	integer	50
 TOOLTIP.RESHOW_DELAY	Tooltip reshow delay (ms)	integer	50
@@ -193,13 +202,10 @@ TOOLTIP.DISMISS_DELAY	Tooltip dismiss delay (ms)	integer	60000
 #Hidden
 SCORE_VARIANTS	FALSE
 
-SAM.COLOR_BY	UNEXPECTED_PAIR
 SAM.AUTOSORT	FALSE
 SAM.SHADE_CENTER	TRUE
 SAM.SHOW_REF_SEQ	FALSE
-SAM.SHADE_BASE_QUALITY	QUALITY
-SAM.FILTER_ALIGNMENTS	FALSE
-SAM.FILTER_URL	null
+
 SAM.BISULFITE_CONTEXT	CG
 SAM.FLAG_ZERO_QUALITY	TRUE
 SAM.NOMESEQ_ENABLED	FALSE
@@ -220,7 +226,6 @@ SEARCH_ZOOM	TRUE
 SAVE_GOOGLE_CREDENTIALS	TRUE
 MAX_SEQUENCE_RESOLUTION	2
 DEFAULT_FONT_ATTRIBUTE	0
-TRACK_ATTRIBUTE_NAME_KEY
 OVERLAY_TRACKS_KEY	TRUE
 SHOW_ORPHANED_MUTATIONS	TRUE
 
@@ -242,6 +247,7 @@ DEFAULT_GENOME_KEY	hg19
 IGV.track.height	15
 FLANKING_REGION	2000
 SHOW_SEQUENCE_TRANSLATION	FALSE
+SEQUENCE_TRANSLATION_STRAND	POSITIVE
 AUTO_UPDATE_GENOMES	TRUE
 GWAS_TRACK_HEIGHT	200
 GWAS_DESCRIPTION_CACHE_SIZE	10000
@@ -268,7 +274,7 @@ CBIO_AMPLIFICATION_THRESHOLD	0.9
 CBIO_DELETION_THRESHOLD	0.9
 CBIO_EXPRESSION_UP_THRESHOLD	1
 CBIO_EXPRESSION_DOWN_THRESHOLD	1
-DETAILS_BEHAVIOR	HOVER
+DETAILS_BEHAVIOR	CLICK
 SHOW_SIZE_WARNING	TRUE
 SKIP_VERSION
 COLOR.A	0,150,0
@@ -278,7 +284,6 @@ COLOR.G	209,113,5
 COLOR.N	128,128,128
 
 SASHIMI.SHOW_COVERAGE	TRUE
-SAM.SHOW_DUPLICATES	FALSE
 GENE_LIST_BED_FORMAT	FALSE
 showLOS	TRUE
 DEBUG.PROXY	FALSE
@@ -294,3 +299,7 @@ MUTATION_Non-coding_Transcript_COLOR	Non-coding Transcript	color	0,0,150
 MUTATION_Other_AA_changing_COLOR	Other AA Changing	color	0,150,150
 MUTATION_Other_likely_neutral_COLO	Other Likely NeutralR	color	225,180,225
 MUTATION_UNKNOWN_COLOR_KEY	Unknown	color	0,180,225
+
+OVERLAY_ATTRIBUTE_KEY	Linking ID	string	LINKING_ID
+
+

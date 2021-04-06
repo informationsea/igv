@@ -250,7 +250,7 @@ public class VariantTrack extends FeatureTrack implements IGVEventObserver {
             if (defVisibilityWindow > 0) {
                 setVisibilityWindow(defVisibilityWindow * 1000);
             } else {
-                int vw = Math.max(10000, 2000000 - 2000 * allSamples.size());
+                int vw = Math.max(10000, (100000 -  100 * (allSamples.size() - 1)));
                 setVisibilityWindow(vw);
             }
         }
@@ -1255,7 +1255,7 @@ public class VariantTrack extends FeatureTrack implements IGVEventObserver {
     public IGVPopupMenu getPopupMenu(final TrackClickEvent te) {
         selectedVariant = getSelectedVariant(te);
         if (selectedVariant != null) {
-            IGV.getInstance().doRefresh();
+            repaint();
         }
         return new VariantMenu(this, selectedVariant);
     }
@@ -1297,15 +1297,15 @@ public class VariantTrack extends FeatureTrack implements IGVEventObserver {
             if (sampleAtPosition != null) {
                 if (selectedSamples.size() == 1 && selectedSamples.contains(sampleAtPosition)) {
                     selectedSamples.clear();
-                    IGV.getInstance().repaint();
-                    return;
+                    repaint();
+                    return;     // <-  TODO fix, bad practice
                 } else {
                     selectedSamples.clear();
                 }
                 selectedSamples.add(sampleAtPosition);
             }
         }
-        IGV.getInstance().repaint();
+        repaint();
 
     }
 
@@ -1370,7 +1370,7 @@ public class VariantTrack extends FeatureTrack implements IGVEventObserver {
                     }
                 }
             }
-            IGV.getInstance().doRefresh();
+            repaint();
         }
 
         if (IGV.getInstance().isShowDetailsOnClick()) {

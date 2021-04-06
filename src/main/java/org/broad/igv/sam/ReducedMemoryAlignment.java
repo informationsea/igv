@@ -355,11 +355,13 @@ public class ReducedMemoryAlignment implements Alignment {
 
         private int pixelStart;
         private int pixelEnd;
+        private char cigarOperator;
 
         ReducedMemoryAlignmentBlock(int start, int length, boolean softClipped) {
             this.start = start;
             this.length = length;
             this.softClipped = softClipped;
+            this.cigarOperator = cigarOperator;
         }
 
         int start;
@@ -378,11 +380,21 @@ public class ReducedMemoryAlignment implements Alignment {
             return x >= this.pixelStart && x <= this.pixelEnd;
         }
 
+        @Override
+        public char getCigarOperator() {
+            return cigarOperator;
+        }
+
 
         @Override
         public boolean contains(int position) {
             int offset = position - start;
             return offset >= 0 && offset < getLength();
+        }
+
+        @Override
+        public int getBasesLength() {
+            return length;
         }
 
 

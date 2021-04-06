@@ -52,9 +52,9 @@ import java.util.Collection;
  */
 public class RegionOfInterestPanel extends JPanel {
 
-    PopupMenu popup;
-
     ReferenceFrame frame;
+    RegionOfInterest focusROI;
+    boolean switchStartOrEnd;
 
     // There can only be 1 selected region, irrespective of the number of panels
     private static RegionOfInterest selectedRegion = null;
@@ -78,7 +78,7 @@ public class RegionOfInterestPanel extends JPanel {
         drawRegionsOfInterest((Graphics2D) g, getHeight());
 
         g.setColor(Color.BLACK);
-        g.drawRect(0, 0, getWidth(), getHeight());
+        g.drawLine(0, 0, getWidth(), 0);
     }
 
 
@@ -196,24 +196,16 @@ public class RegionOfInterestPanel extends JPanel {
         popupMenu.add(item);
 
         item = new JMenuItem("Blat sequence");
-        item.addActionListener(new ActionListener() {
-
-            public void actionPerformed(ActionEvent e) {
-                BlatClient.doBlatQuery(roi.getChr(), roi.getStart(), roi.getEnd(), Strand.NONE);
-            }
-        });
+        item.addActionListener(e -> BlatClient.doBlatQuery(roi.getChr(), roi.getStart(), roi.getEnd(), Strand.NONE));
         popupMenu.add(item);
 
 
         popupMenu.add(new JSeparator());
 
         item = new JMenuItem("Delete");
-        item.addActionListener(new ActionListener() {
-
-            public void actionPerformed(ActionEvent e) {
-                IGV.getInstance().getSession().getRegionsOfInterest(frame.getChrName()).remove(roi);
-                IGV.getInstance().revalidateTrackPanels();
-            }
+        item.addActionListener(e -> {
+            IGV.getInstance().getSession().getRegionsOfInterest(frame.getChrName()).remove(roi);
+            IGV.getInstance().repaint();
         });
         popupMenu.add(item);
 
@@ -231,33 +223,65 @@ public class RegionOfInterestPanel extends JPanel {
 
     class ROIMouseAdapater extends MouseInputAdapter {
 
+        boolean dragging = false;
+
         @Override
         public void mousePressed(MouseEvent e) {
-            showPopup(e);
+            if ((e.getModifiers() & MouseEvent.CTRL_MASK) != 0) {
+                focusROI = getRegionOfInterest(e.getX());
+                if (focusROI != null) {
+                    int curPos = (int) frame.getChromosomePosition(e.getX());
+                    int startDist = Math.abs(focusROI.getStart() - curPos);
+                    int endDist = Math.abs(focusROI.getEnd() - curPos);
+                    if (startDist < endDist) {
+                        switchStartOrEnd = true;
+                    } else {
+                        switchStartOrEnd = false;
+                    }
+                }
+            } else {
+                showPopup(e);
+            }
         }
 
+        @Override
+        public void mouseDragged(MouseEvent e) {
+            dragging = true;
+            if (focusROI != null) {
+                if (switchStartOrEnd) {
+                    focusROI.setStart((int) frame.getChromosomePosition(e.getX()));
+                } else {
+                    focusROI.setEnd((int) frame.getChromosomePosition(e.getX()));
+                }
+                IGV.getInstance().repaint();
+            }
+        }
 
         @Override
         public void mouseReleased(MouseEvent e) {
-            //showPopup(e);
+            if(dragging  && selectedRegion != null) {
+                selectedRegion = null;
+                IGV.getInstance().repaint();
+            }
+            focusROI = null;
+            dragging = false;
         }
-
 
         @Override
         public void mouseMoved(MouseEvent e) {
             RegionOfInterest roi = getRegionOfInterest(e.getX());
             if (roi != null) {
                 setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-                setToolTipText(roi.getTooltip());
+                setToolTipText("<html>" + roi.getTooltip() + "<br>To resize use ctrl-click-drag.");
                 if (selectedRegion != roi) {
                     selectedRegion = roi;
-                    IGV.getInstance().revalidateTrackPanels();
+                    IGV.getInstance().repaint();
                 }
 
             } else {
                 if (selectedRegion != null) {
                     selectedRegion = null;
-                    IGV.getInstance().revalidateTrackPanels();
+                    IGV.getInstance().repaint();
                 }
                 setToolTipText("");
                 setCursor(Cursor.getDefaultCursor());
@@ -266,9 +290,9 @@ public class RegionOfInterestPanel extends JPanel {
 
         @Override
         public void mouseExited(MouseEvent mouseEvent) {
-            if (selectedRegion != null) {
+            if (!dragging && selectedRegion != null) {
                 selectedRegion = null;
-                IGV.getInstance().revalidateTrackPanels();
+                IGV.getInstance().repaint();
             }
         }
 

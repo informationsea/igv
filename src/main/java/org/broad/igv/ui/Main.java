@@ -45,11 +45,13 @@ import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.URL;
 import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 
 import static org.broad.igv.prefs.Constants.*;
@@ -87,8 +89,11 @@ public class Main {
 
         htsjdk.tribble.util.ParsingUtils.setURLHelperFactory(IGVUrlHelperFactory.getInstance());
 
-        OAuthUtils.getInstance();  // Initialize oauth
-
+        try {
+            OAuthUtils.getInstance();  // Initialize oauth
+        } catch (Exception e) {
+            log.error("Warning: Error fetching oAuth properties: " + e.getMessage());
+        }
 
         final Main.IGVArgs igvArgs = new Main.IGVArgs(args);
 
@@ -96,6 +101,7 @@ public class Main {
         if (igvArgs.igvDirectory != null) {
             setIgvDirectory(igvArgs);
         }
+        checkDotIgvDirectory();
 
         Runnable runnable = () -> {
             if (Globals.IS_WINDOWS && System.getProperty("os.name").contains("10")) {
@@ -140,6 +146,49 @@ public class Main {
             }
         } else {
             log.error("'" + dir.getAbsolutePath() + "' is not a directory");
+        }
+    }
+
+    private static void checkDotIgvDirectory() {
+        // Check if the .igv directory exists and create it if not.  This is a config
+        // file with a known name and location, not intended to be moved by the user.
+        // At present, this is only used by the launcher scripts and not the Java code.
+        String userHome = System.getProperty("user.home");
+        File dir = new File(userHome, ".igv");
+        if (!dir.exists()) {
+            // doesn't exist -- try to create it
+            try {
+                dir.mkdir();
+            } catch (Exception e) {
+                // Ignore the mkdir failure.  It's not necessary to even report this.
+                // We'll proceed without it.
+                return;
+            }
+        }
+        
+        // Also check if the java_arguments file exists and create it if not.  This is
+        // likewise only used by the launcher scripts.  We create it here as a user
+        // convenience.  Note that we skip it if ~/.igv is not a directory.
+        if (dir.isDirectory()) {
+            File argsFile = new File(dir, "java_arguments");
+            if (!argsFile.exists()) {
+                // doesn't exist -- try to create it
+                try {
+                    FileWriter argsFileWriter = new FileWriter(argsFile);
+                    try {
+                        argsFileWriter.append("# See https://raw.githubusercontent.com/igvteam/igv/master/scripts/readme.txt for tips on using this file.");
+                        argsFileWriter.append(System.lineSeparator());
+                        argsFileWriter.append("# Uncomment the following line for an 8 GB memory spec for IGV.");
+                        argsFileWriter.append(System.lineSeparator());
+                        argsFileWriter.append("# -Xmx8G");
+                        argsFileWriter.append(System.lineSeparator());
+                    } finally {
+                        argsFileWriter.close();
+                    }
+                } catch (Exception e) {
+                    // As above, ignore the write failure.
+                }
+            }
         }
     }
 
@@ -218,7 +267,7 @@ public class Main {
                 }
 
             } catch (Exception e) {
-                log.error("Error checking version", e);
+                // ignore
             } finally {
 
             }
@@ -288,8 +337,6 @@ public class Main {
         HttpUtils.getInstance().updateProxySettings();
 
         SeekableStreamFactory.setInstance(IGVSeekableStreamFactory.getInstance());
-
-        RuntimeUtils.loadPluginJars();
 
         IGV.createInstance(frame).startUp(igvArgs);
 
@@ -411,7 +458,7 @@ public class Main {
         private String coverageFile = null;
         private String name = null;
         public String igvDirectory = null;
-        public String forceVersion = null;
+        public Collection<String> httpHeader = null;
 
         IGVArgs(String[] args) {
             if (args != null) {
@@ -436,8 +483,10 @@ public class Main {
             CmdLineParser.Option nameOption = parser.addStringOption('n', "name");
             CmdLineParser.Option locusOption = parser.addStringOption('l', "locus");
             CmdLineParser.Option igvDirectoryOption = parser.addStringOption("igvDirectory");
-            CmdLineParser.Option forceVersionOption = parser.addStringOption("forceVersion");
             CmdLineParser.Option versionOption = parser.addBooleanOption("version");
+            CmdLineParser.Option helpOption = parser.addBooleanOption("help");
+            CmdLineParser.Option headerOption = parser.addStringOption('H', "header");
+
 
             try {
                 parser.parse(args);
@@ -455,6 +504,7 @@ public class Main {
             genomeServerURL = getDecodedValue(parser, genomeServerOption);
             name = (String) parser.getOptionValue(nameOption);
             locusString = (String) parser.getOptionValue(locusOption);
+            httpHeader = parser.getOptionValues(headerOption);
 
             String indexFilePath = (String) parser.getOptionValue(indexFileOption);
             if (indexFilePath != null) {
@@ -472,15 +522,15 @@ public class Main {
                 igvDirectory = maybeDecodePath(igvDirectoryPath);
             }
 
-            String forceVersion = (String) parser.getOptionValue(forceVersionOption);
-            if (forceVersion != null) {
-                Globals.VERSION = forceVersion;
-            }
-
             String[] nonOptionArgs = parser.getRemainingArgs();
 
             if (parser.getOptionValue(versionOption) != null) {
                 System.out.println(Globals.VERSION);
+                System.exit(0);
+            }
+
+            if(parser.getOptionValue(helpOption) != null) {
+                printHelp();
                 System.exit(0);
             }
 
@@ -551,7 +601,7 @@ public class Main {
 
         private String maybeDecodePath(String path) {
 
-            if (FileUtils.resourceExists(path)) {
+            if ((new File(path)).exists()) {
                 return path;
             } else if (FileUtils.isRemote(path)) {
                 return URLDecoder.decode(path);
@@ -624,6 +674,27 @@ public class Main {
             return name;
         }
 
-    }
+        public Collection<String> getHttpHeader() {
+            return httpHeader;
+        }
 
+        private void printHelp() {
+            System.out.println("Command line options:");
+            System.out.println("Space delimited list of data files to load");
+            System.out.println("--preferences, -o  Path or URL to a preference property file");
+            System.out.println("--batch. -b  Path or url to a batch command file");
+            System.out.println("--port, -p  IGV command port number (defaults to 60151)");
+            System.out.println("--genome, -g  Genome ID (e.g hg19) or path or url to .genome or indexed fasta file");
+            System.out.println("--dataServerURL, -d  Path or url to a data server registry file");
+            System.out.println("--genomeServerURL, -u  Path or url to a genome server registry file");
+            System.out.println("--indexFile, -i  Index file or comma delimited list of index files corresponding to data files");
+            System.out.println("--coverageFile, -c  Coverage file or comma delimited list of coverage files corresponding to data files");
+            System.out.println("--name, -n  Name or comma-delimited list of names for tracks corresponding to data files");
+            System.out.println("--locus, -l  Initial locus");
+            System.out.println("--header, -H http header to include with all requests for list of data files");
+            System.out.println("--igvDirectory Path to the local igv directory.  Defaults to <user home>/igv");
+            System.out.println("--version  Print the IGV version and exit");
+            System.out.println("--help Print this output and exit");
+        }
+    }
 }

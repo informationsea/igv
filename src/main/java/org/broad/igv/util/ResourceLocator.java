@@ -30,7 +30,6 @@ import htsjdk.tribble.Tribble;
 import org.apache.log4j.Logger;
 import org.broad.igv.google.Ga4ghAPIHelper;
 import org.broad.igv.google.GoogleUtils;
-import org.broad.igv.gs.GSUtils;
 
 import java.awt.*;
 import java.io.File;
@@ -113,10 +112,6 @@ public class ResourceLocator {
 
     String sampleId;
 
-    String username;
-
-    String password;
-
     private HashMap attributes = new HashMap();
     private boolean indexed;
 
@@ -128,7 +123,7 @@ public class ResourceLocator {
     public ResourceLocator(String path) {
         this.setPath(path);
 
-        if(path != null && path.startsWith("https://") && GoogleUtils.isGoogleDrive(path)) {
+        if (path != null && path.startsWith("https://") && GoogleUtils.isGoogleDrive(path)) {
             this.resolveGoogleDrive(path);
         }
 
@@ -199,11 +194,7 @@ public class ResourceLocator {
                         // If type is set explicitly use it
                         if (queryMap.containsKey("dataformat")) {
                             String format = queryMap.get("dataformat");
-                            if (format.contains("genomespace")) {
-                                typeString = GSUtils.parseDataFormatString(format);
-                            } else {
-                                typeString = format;
-                            }
+                            typeString = format;
                         } else if (queryMap.containsKey("file")) {
                             typeString = queryMap.get("file");
                         }
@@ -260,7 +251,17 @@ public class ResourceLocator {
     }
 
     public String getFileName() {
-        return (new File(path)).getName();
+        if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("gs://")) {
+            int idxQuestion = path.indexOf('?');
+            String actualPath = idxQuestion < 0 ? path : path.substring(0, idxQuestion);
+            int idxSlash = actualPath.lastIndexOf('/');
+            return idxSlash < 0 ?
+                    actualPath :
+                    actualPath.substring(idxSlash + 1);
+
+        } else {
+            return (new File(path)).getName();
+        }
     }
 
 
@@ -289,18 +290,7 @@ public class ResourceLocator {
     }
 
     public String getTrackName() {
-        if (name == null) {
-            if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("gs://")) {
-                int idx = path.lastIndexOf('/');
-                int idx2 = path.indexOf('?');
-                return idx2 > idx ? path.substring(idx + 1, idx2) : path.substring(idx + 1);
-
-            } else {
-                return new File(path).getName();
-            }
-        }
-        return name;
-
+        return this.getFileName();
     }
 
 
@@ -338,31 +328,29 @@ public class ResourceLocator {
     }
 
     public void setPath(String path) {
+
         if (path != null && path.startsWith("file://")) {
             this.path = path.substring("file://".length());
         } else if (path != null && path.startsWith("gs://")) {
             this.path = GoogleUtils.translateGoogleCloudURL(path);
         } else if (path != null && path.startsWith("s3://")) {
             this.path = path;
-
-            // Set UI human-readable short name for the file
-            String objFname = "";
-            if (path.contains("/")) {
-                objFname = path.substring(path.lastIndexOf('/')).replace("/", "");
-            } else {
-                objFname = path;
-            }
-
-            log.debug("S3 object filename visible in IGV UI is: "+ objFname);
-            this.setName(objFname);
-
             String s3UrlIndexPath = detectIndexPath(path);
-
             this.setIndexPath(s3UrlIndexPath);
-
         } else {
             this.path = path;
         }
+
+        // Set UI human-readable short name for the file
+        String objFname = "";
+        if (path != null) {
+            if (path.contains("/")) {
+                objFname = this.getTrackName();
+            } else {
+                objFname = path;
+            }
+        }
+        this.setName(objFname);
     }
 
     public String getTrackLine() {
@@ -393,11 +381,12 @@ public class ResourceLocator {
 
     /**
      * Takes in a non-pre-signed URL and returns its (guessed) indexfile.
+     *
      * @param inputPath: Path containing vcf/bam file
      * @return indexPath: Guessed path containing the corresponding index (in the CWD-equivalent dir level)
      */
     public String detectIndexPath(String inputPath) {
-        log.debug("detectIndexPath() input S3 path is: "+inputPath);
+        log.debug("detectIndexPath() input S3 path is: " + inputPath);
         String indexPath = "";
         if (inputPath.contains(".bam")) {
             indexPath = inputPath + ".bai";
@@ -407,22 +396,6 @@ public class ResourceLocator {
             log.debug("S3 index object filetype could not be determined from S3 url");
         }
         return indexPath;
-    }
-
-    public String getUsername() {
-        return username;
-    }
-
-    public void setUsername(String username) {
-        this.username = username;
-    }
-
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
     }
 
     @Override
@@ -481,10 +454,9 @@ public class ResourceLocator {
         if (locator.getIndexPath() != null) {
             return locator.getIndexPath();
         } else {
-            if(isCloudOrDropbox(locator.getPath())) {
+            if (isCloudOrDropbox(locator.getPath())) {
                 return null;   // Can't infer google & dropbox paths
-            }
-            else {
+            } else {
                 String indexExtension =
                         (locator.getURLPath().toLowerCase().endsWith(".gz") || locator.getPath().toLowerCase().endsWith(".bgz")) ? ".tbi" : Tribble.STANDARD_INDEX_EXTENSION;
                 return appendToPath(locator, indexExtension);
